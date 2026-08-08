@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QHSE — WPI</title>
+<title>QHSE — MBB</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -54,11 +54,19 @@
   </div>
 </div>
 
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">MBB is alleen zichtbaar voor de groep Management (of Admin/KAM). Jouw account hoort daar niet bij.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
 <div id="app-scherm" class="wrap verborgen">
   <div class="topbar">
     <div>
       <div class="eyebrow">QHSE-systeem</div>
-      <h1>Werkplekinspecties</h1>
+      <h1>Managementbetrokkenheid</h1>
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
@@ -96,6 +104,7 @@
   async function uitloggen(){
     await supabaseClient.auth.signOut();
     document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
     document.getElementById('login-scherm').classList.remove('verborgen');
   }
   async function initApp(){
@@ -105,8 +114,22 @@
       .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
-    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('login-scherm').classList.add('verborgen');
+
+    // Check: zit ik in Management, of ben ik admin/kam? (RLS handhaaft dit ook echt —
+    // dit is puur voor een nette melding i.p.v. een lege lijst)
+    let inManagement = false;
+    const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
+    if(mgmtGroep){
+      const { data: lidmaatschap } = await supabaseClient
+        .from('groep_leden').select('groep_id').eq('groep_id', mgmtGroep.id).eq('profiel_id', profiel.id).maybeSingle();
+      inManagement = !!lidmaatschap;
+    }
+    if(!inManagement && !['admin','kam'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('app-scherm').classList.remove('verborgen');
     scherm = 'lijst';
     await render();
@@ -122,7 +145,7 @@
   async function renderLijst(){
     const { data: bezoeken, error } = await supabaseClient
       .from('wpi_bezoeken').select('*, wpi_formulieren!inner(naam, soort)')
-      .eq('uitvoerder_id', huidigProfiel.id).eq('wpi_formulieren.soort', 'wpi')
+      .eq('uitvoerder_id', huidigProfiel.id).eq('wpi_formulieren.soort', 'mbb')
       .order('aangemaakt_op', { ascending:false });
     if(error) return '<div class="fout">Kon bezoeken niet laden: ' + error.message + '</div>';
     const rows = (bezoeken||[]).map(b => `
@@ -144,7 +167,7 @@
 
   async function renderKiezen(){
     const { data: formulieren, error } = await supabaseClient
-      .from('wpi_formulieren').select('*').eq('actief', true).eq('soort', 'wpi').order('naam');
+      .from('wpi_formulieren').select('*').eq('actief', true).eq('soort', 'mbb').order('naam');
     if(error) return '<div class="fout">Kon formulieren niet laden: ' + error.message + '</div>';
     const rows = (formulieren||[]).map(f => `
       <div class="card row">
