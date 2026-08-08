@@ -79,6 +79,8 @@
   let huidigProfiel = null;
   let laatsteResultaat = null; // { status:'groen'|'rood'|'oranje', middel, keuring, opgezochtId }
   let meldFormOpen = false;
+  let aanvraagOpen = false;
+  let aanvraagData = null;
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -130,7 +132,7 @@
     meldFormOpen = false;
 
     const { data: middel, error: middelFout } = await supabaseClient
-      .from('arbeidsmiddelen').select('*').eq('uniek_id', uniekId).maybeSingle();
+      .from('arbeidsmiddelen').select('*').ilike('uniek_id', uniekId).maybeSingle();
 
     if(middelFout){ alert('Zoeken mislukt: ' + middelFout.message); return; }
 
@@ -166,8 +168,10 @@
       return `
         <div class="statuskaart oranje">
           <div class="titel">Onbekend ID</div>
-          <div class="meta" style="margin-top:6px">'${r.uniekId}' staat niet in het register. Dit is automatisch gemeld bij de beheerder.</div>
-        </div>`;
+          <div class="meta" style="margin-top:6px">'${r.uniekId}' staat niet in het register.</div>
+          ${!aanvraagOpen ? `<button class="primary" style="margin-top:14px" onclick="openAanvraag('${r.uniekId}')">+ Dit arbeidsmiddel aanvragen</button>` : ''}
+        </div>
+        ${aanvraagOpen ? renderAanvraagFormulier() : ''}`;
     }
     if(r.status === 'oranje' && r.geenKeuring){
       return `
@@ -185,6 +189,102 @@
         ${r.keuring.reden ? `<div class="meta">Reden: ${r.keuring.reden}</div>` : ''}
         ${r.keuring.rapport_pad ? `<button class="ghost" style="margin-top:10px" onclick="bekijkRapport('${r.keuring.rapport_pad}')">📄 Bekijk keuringsrapport (PDF)</button>` : ''}
       </div>`;
+  }
+
+  function openAanvraag(uniekId){
+    aanvraagOpen = true;
+    aanvraagData = { uniekId, eigendom:'eigen', fotoArbeidsmiddel:null, fotoUniekNummer:null };
+    render();
+  }
+
+  function renderAanvraagFormulier(){
+    return `
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Uniek ID</label>
+        <input type="text" value="${aanvraagData.uniekId}" disabled>
+
+        <label>Eigendom</label>
+        <select id="aanvEigendom" onchange="aanvraagData.eigendom=this.value; render();">
+          <option value="eigen" ${aanvraagData.eigendom==='eigen'?'selected':''}>Eigen materieel</option>
+          <option value="gehuurd" ${aanvraagData.eigendom==='gehuurd'?'selected':''}>Gehuurd</option>
+        </select>
+        ${aanvraagData.eigendom==='gehuurd' ? `
+          <label>Verhuurder</label>
+          <input type="text" id="aanvVerhuurder">
+        ` : ''}
+
+        <label>Merk</label>
+        <input type="text" id="aanvMerk">
+        <label>Type</label>
+        <input type="text" id="aanvType">
+
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="aanvSticker" style="width:auto" onchange="render()"> Keuringssticker aanwezig
+        </label>
+        ${document.getElementById('aanvSticker') && document.getElementById('aanvSticker').checked ? `
+          <label>Datum op de sticker</label>
+          <input type="date" id="aanvStickerDatum">
+        ` : ''}
+
+        <label>Foto van het arbeidsmiddel (verplicht)</label>
+        <input type="file" accept="image/*" capture="environment" id="aanvFotoMiddel">
+        <label>Foto van het unieke nummer/plaatje (verplicht)</label>
+        <input type="file" accept="image/*" capture="environment" id="aanvFotoNummer">
+
+        <div class="row" style="margin-top:16px">
+          <button class="ghost" onclick="aanvraagOpen=false; render();">Annuleren</button>
+          <button class="primary" onclick="verstuurAanvraag()">Aanvraag versturen</button>
+        </div>
+        <div class="fout verborgen" id="aanvFout"></div>
+      </div>
+    `;
+  }
+
+  async function verstuurAanvraag(){
+    const eigendom = document.getElementById('aanvEigendom').value;
+    const verhuurder = eigendom==='gehuurd' ? (document.getElementById('aanvVerhuurder')?.value.trim() || null) : null;
+    const merk = document.getElementById('aanvMerk').value.trim() || null;
+    const type = document.getElementById('aanvType').value.trim() || null;
+    const stickerAanwezig = document.getElementById('aanvSticker').checked;
+    const stickerDatum = stickerAanwezig ? (document.getElementById('aanvStickerDatum')?.value || null) : null;
+    const fotoMiddelInput = document.getElementById('aanvFotoMiddel');
+    const fotoNummerInput = document.getElementById('aanvFotoNummer');
+    const foutEl = document.getElementById('aanvFout');
+    foutEl.classList.add('verborgen');
+
+    if(!fotoMiddelInput.files[0] || !fotoNummerInput.files[0]){
+      foutEl.textContent = 'Beide foto\'s zijn verplicht.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
+
+    const uploadFoto = async (file, label) => {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const pad = `${huidigProfiel.organisatie_id}/${aanvraagData.uniekId}-${label}-${Date.now()}.${ext}`;
+      const { error } = await supabaseClient.storage.from('keuringen-aanvragen').upload(pad, file);
+      if(error) throw new Error(error.message);
+      return pad;
+    };
+
+    try{
+      const fotoArbeidsmiddelPad = await uploadFoto(fotoMiddelInput.files[0], 'middel');
+      const fotoUniekNummerPad = await uploadFoto(fotoNummerInput.files[0], 'nummer');
+
+      const { error } = await supabaseClient.from('arbeidsmiddel_aanvragen').insert({
+        organisatie_id: huidigProfiel.organisatie_id, aanvrager_id: huidigProfiel.id,
+        uniek_id: aanvraagData.uniekId, eigendom, verhuurder, merk, type,
+        keuringssticker_aanwezig: stickerAanwezig, keuringssticker_datum: stickerDatum,
+        foto_arbeidsmiddel_pad: fotoArbeidsmiddelPad, foto_uniek_nummer_pad: fotoUniekNummerPad
+      });
+      if(error) throw new Error(error.message);
+
+      aanvraagOpen = false;
+      laatsteResultaat = null;
+      document.getElementById('inhoud').innerHTML = '<div class="melding" style="background:var(--green-dim); color:var(--green); padding:14px; border-radius:8px;">✓ Aanvraag verstuurd. De beheerder rondt de registratie af.</div>';
+    }catch(e){
+      foutEl.textContent = 'Versturen mislukt: ' + e.message;
+      foutEl.classList.remove('verborgen');
+    }
   }
 
   async function bekijkRapport(pad){
