@@ -76,7 +76,7 @@
   // ==== Verbinding met jullie Supabase-project ====
   const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
-  let supabase = null;
+  let supabaseClient = null;
 
   function toonOpstartfout(bericht){
     const foutEl = document.getElementById('foutmelding');
@@ -89,7 +89,7 @@
     if(!window.supabase || !window.supabase.createClient){
       toonOpstartfout('De Supabase-bibliotheek kon niet geladen worden (CDN-probleem). Probeer een andere browser, schakel adblockers voor deze pagina uit, of controleer je internetverbinding, en vernieuw de pagina.');
     } else {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     }
   }catch(e){
     toonOpstartfout('Kon geen verbinding opzetten met Supabase: ' + (e && e.message ? e.message : e));
@@ -97,7 +97,7 @@
   }
 
   async function login(){
-    if(!supabase){
+    if(!supabaseClient){
       toonOpstartfout('Er is geen verbinding met Supabase — ververs de pagina en probeer opnieuw.');
       return;
     }
@@ -113,7 +113,7 @@
     }
 
     try{
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: wachtwoord });
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
       if(error){
         foutEl.textContent = 'Inloggen mislukt: ' + error.message;
         foutEl.style.display = 'block';
@@ -128,10 +128,10 @@
   }
 
   async function toonProfiel(){
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
 
-    const { data: profiel, error } = await supabase
+    const { data: profiel, error } = await supabaseClient
       .from('profielen')
       .select('voornaam, achternaam, rol, in_dienst, organisaties(naam)')
       .eq('id', user.id)
@@ -154,7 +154,7 @@
   }
 
   async function uitloggen(){
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     document.getElementById('resultaatBlok').style.display = 'none';
     document.getElementById('loginBlok').style.display = 'block';
     document.getElementById('email').value = '';
@@ -162,8 +162,8 @@
   }
 
   // Als er al een sessie actief is (bijv. na een refresh), meteen het profiel tonen
-  if(supabase){
-    supabase.auth.getSession().then(({ data:{ session } }) => {
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
       if(session) toonProfiel();
     });
   }
