@@ -119,6 +119,11 @@
     await render();
   }
 
+  function zoekenUitvoeren(){
+    zoekterm = document.getElementById('zoekveld').value;
+    render();
+  }
+
   function setTab(t){ tabActief = t; render(); }
 
   async function render(){
@@ -144,7 +149,10 @@
         ${s.sds_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkSDS('${s.sds_pad}')">📄 SDS bekijken</button>` : `<div class="meta" style="margin-top:8px">Nog geen SDS beschikbaar.</div>`}
       </div>`).join('') || '<div class="meta">Geen stoffen gevonden.</div>';
     return `
-      <input type="text" placeholder="Zoek op naam of CAS-nummer…" value="${zoekterm}" oninput="zoekterm=this.value; render();" style="margin-bottom:14px">
+      <div class="row" style="gap:8px; margin-bottom:14px">
+        <input type="text" id="zoekveld" placeholder="Zoek op naam of volledig CAS-nummer…" value="${zoekterm}" onkeydown="if(event.key==='Enter') zoekenUitvoeren()">
+        <button class="primary" onclick="zoekenUitvoeren()" style="flex-shrink:0">Zoeken</button>
+      </div>
       ${rows}
     `;
   }
