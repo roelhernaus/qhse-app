@@ -76,9 +76,31 @@
   // ==== Verbinding met jullie Supabase-project ====
   const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let supabase = null;
+
+  function toonOpstartfout(bericht){
+    const foutEl = document.getElementById('foutmelding');
+    foutEl.textContent = bericht;
+    foutEl.style.display = 'block';
+    document.querySelectorAll('#loginBlok button').forEach(b => b.disabled = true);
+  }
+
+  try{
+    if(!window.supabase || !window.supabase.createClient){
+      toonOpstartfout('De Supabase-bibliotheek kon niet geladen worden (CDN-probleem). Probeer een andere browser, schakel adblockers voor deze pagina uit, of controleer je internetverbinding, en vernieuw de pagina.');
+    } else {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+  }catch(e){
+    toonOpstartfout('Kon geen verbinding opzetten met Supabase: ' + (e && e.message ? e.message : e));
+    console.error(e);
+  }
 
   async function login(){
+    if(!supabase){
+      toonOpstartfout('Er is geen verbinding met Supabase — ververs de pagina en probeer opnieuw.');
+      return;
+    }
     const email = document.getElementById('email').value.trim();
     const wachtwoord = document.getElementById('wachtwoord').value;
     const foutEl = document.getElementById('foutmelding');
@@ -140,9 +162,11 @@
   }
 
   // Als er al een sessie actief is (bijv. na een refresh), meteen het profiel tonen
-  supabase.auth.getSession().then(({ data:{ session } }) => {
-    if(session) toonProfiel();
-  });
+  if(supabase){
+    supabase.auth.getSession().then(({ data:{ session } }) => {
+      if(session) toonProfiel();
+    });
+  }
 </script>
 </body>
 </html>
