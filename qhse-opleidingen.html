@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Opleidingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:680px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+  input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .card.klikbaar{ cursor:pointer; }
+  .card.klikbaar:hover{ border-color:var(--accent); }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .tag.behaald{ background:var(--green-dim); color:var(--green); }
+  .tag.verlopen, .tag.mislukt{ background:var(--red-dim); color:var(--red); }
+  .tag.nieuw{ background:var(--amber-dim); color:var(--amber); }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .toggle{ display:flex; gap:6px; }
+  .toggle button{ flex:1; }
+  .toggle button.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  .resultaat{ text-align:center; padding:30px 20px; }
+  .resultaat .score{ font-family:'Oswald',sans-serif; font-size:44px; font-weight:600; margin:10px 0; }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label style="display:block; font-size:12.5px; font-weight:600; margin-bottom:5px">E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label style="display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px">Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem</div>
+      <h1>Opleidingen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  const WI_SLAAGPERCENTAGE = 75;
+  const WI_MIN_LEESTIJD = 10; // seconden
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'intro' | 'quiz' | 'resultaat'
+  let actieveOpleiding = null; // { opleiding, versie, vragen, wijzigingslog, isNieuweVersie }
+  let antwoorden = {};
+  let laatsteResultaat = null;
+  let leesTimerVerstreken = false;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    scherm = 'lijst';
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
+    else if(scherm === 'intro') inhoud.innerHTML = renderIntro();
+    else if(scherm === 'quiz') inhoud.innerHTML = renderQuiz();
+    else if(scherm === 'resultaat') inhoud.innerHTML = renderResultaat();
+  }
+
+  async function renderLijst(){
+    const { data: opleidingen, error } = await supabaseClient.from('opleidingen').select('*').order('naam');
+    if(error) return '<div class="fout">Kon opleidingen niet laden: ' + error.message + '</div>';
+
+    const rows = await Promise.all((opleidingen||[]).map(async (o) => {
+      const { data: versie } = await supabaseClient
+        .from('opleiding_versies').select('*').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
+      if(!versie) return `<div class="card"><b>${o.naam}</b><div class="meta" style="margin-top:6px">Nog geen actieve versie.</div></div>`;
+
+      const { data: laatstePoging } = await supabaseClient
+        .from('opleiding_pogingen').select('*').eq('versie_id', versie.id).eq('profiel_id', huidigProfiel.id)
+        .order('afgerond_op', { ascending:false }).limit(1).maybeSingle();
+
+      let statusTag = '<span class="tag nieuw">Nog niet gedaan</span>';
+      let extraMeta = '';
+      if(laatstePoging){
+        if(laatstePoging.geslaagd){
+          const vervalDatum = new Date(laatstePoging.afgerond_op);
+          vervalDatum.setMonth(vervalDatum.getMonth() + o.interval_maanden);
+          const verlopen = vervalDatum < new Date();
+          statusTag = verlopen ? '<span class="tag verlopen">Verlopen</span>' : '<span class="tag behaald">Behaald</span>';
+          extraMeta = `Score ${laatstePoging.score}% · geldig tot ${vervalDatum.toLocaleDateString('nl-NL')}`;
+        } else {
+          statusTag = '<span class="tag mislukt">Niet gehaald</span>';
+          extraMeta = `Laatste score: ${laatstePoging.score}%`;
+        }
+      }
+
+      return `
+        <div class="card klikbaar" onclick="startOpleiding('${o.id}')">
+          <div class="row">
+            <div><b>${o.naam}</b> <span class="meta">${o.code || ''}</span></div>
+            ${statusTag}
+          </div>
+          ${extraMeta ? `<div class="meta" style="margin-top:6px">${extraMeta}</div>` : ''}
+        </div>`;
+    }));
+
+    return rows.join('') || '<div class="meta">Nog geen opleidingen aan jou toegewezen.</div>';
+  }
+
+  async function startOpleiding(opleidingId){
+    const { data: opleiding } = await supabaseClient.from('opleidingen').select('*').eq('id', opleidingId).single();
+    const { data: versie, error: versieFout } = await supabaseClient
+      .from('opleiding_versies').select('*').eq('opleiding_id', opleidingId).eq('actief', true).single();
+    if(versieFout){ alert('Kon opleiding niet laden: ' + versieFout.message); return; }
+    const { data: vragen, error: vragenFout } = await supabaseClient
+      .from('opleiding_vragen').select('*').eq('versie_id', versie.id).order('volgorde');
+    if(vragenFout){ alert('Kon vragen niet laden: ' + vragenFout.message); return; }
+
+    const { data: eerdereGeslaagd } = await supabaseClient
+      .from('opleiding_pogingen').select('id').eq('versie_id', versie.id).eq('profiel_id', huidigProfiel.id).eq('geslaagd', true).limit(1);
+
+    actieveOpleiding = { opleiding, versie, vragen: vragen||[], isNieuweVersie: !(eerdereGeslaagd && eerdereGeslaagd.length) };
+    antwoorden = {};
+    leesTimerVerstreken = false;
+    scherm = 'intro';
+    await render();
+
+    setTimeout(() => {
+      leesTimerVerstreken = true;
+      const btn = document.getElementById('verderKnop');
+      if(btn){ btn.disabled = false; btn.textContent = 'Verder naar vragen'; }
+    }, WI_MIN_LEESTIJD * 1000);
+  }
+
+  function renderIntro(){
+    const { opleiding, versie } = actieveOpleiding;
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug</button>
+      <div class="card">
+        <b>${opleiding.naam}</b>
+        <div class="meta" style="margin-top:6px">Versie ${versie.versienummer}</div>
+        <div class="meta" style="margin-top:14px"><b>Wat is er veranderd:</b></div>
+        <div style="margin-top:4px; font-size:13.5px">${versie.wijzigingslog}</div>
+        <button class="primary" id="verderKnop" style="width:100%; margin-top:20px" disabled onclick="scherm='quiz'; render();">Even lezen… (${WI_MIN_LEESTIJD}s)</button>
+      </div>
+    `;
+  }
+
+  function beantwoord(vraagId, waarde){
+    antwoorden[vraagId] = waarde;
+    render();
+  }
+
+  function renderQuiz(){
+    const { vragen } = actieveOpleiding;
+    const rows = vragen.map((v,i) => {
+      const antwoord = antwoorden[v.id];
+      const opties = v.type === 'ja/nee'
+        ? [['ja','Ja'],['nee','Nee']]
+        : [['A',v.optie_a],['B',v.optie_b],['C',v.optie_c],['D',v.optie_d]];
+      const knoppen = opties.map(([waarde,label]) => `<button class="${antwoord===waarde?'actief':''}" onclick="beantwoord('${v.id}','${waarde}')">${label}</button>`).join('');
+      return `
+        <div class="card">
+          <div class="meta" style="margin-bottom:6px">Vraag ${i+1} van ${vragen.length}</div>
+          <div style="font-size:14px">${v.tekst}</div>
+          <div class="toggle" style="margin-top:10px; flex-wrap:wrap;">${knoppen}</div>
+        </div>`;
+    }).join('');
+    const onbeantwoord = vragen.some(v => !antwoorden[v.id]);
+    return `
+      ${rows}
+      <div class="row" style="margin:18px 0 30px">
+        <span class="meta">${onbeantwoord ? 'Beantwoord eerst alle vragen.' : 'Klaar om in te leveren.'}</span>
+        <button class="primary" ${onbeantwoord?'disabled':''} onclick="levenIn()">Inleveren</button>
+      </div>
+      <div class="fout verborgen" id="quizFout"></div>
+    `;
+  }
+
+  async function levenIn(){
+    const { versie, vragen } = actieveOpleiding;
+    let goed = 0;
+    vragen.forEach(v => { if(antwoorden[v.id] === v.juiste_antwoord) goed++; });
+    const score = Math.round((goed / vragen.length) * 100);
+    const geslaagd = score >= WI_SLAAGPERCENTAGE;
+
+    const { error } = await supabaseClient.from('opleiding_pogingen').insert({
+      versie_id: versie.id, profiel_id: huidigProfiel.id, score, geslaagd
+    });
+    if(error){
+      const foutEl = document.getElementById('quizFout');
+      foutEl.textContent = 'Opslaan mislukt: ' + error.message;
+      foutEl.classList.remove('verborgen');
+      return;
+    }
+    laatsteResultaat = { score, geslaagd };
+    scherm = 'resultaat';
+    await render();
+  }
+
+  function renderResultaat(){
+    const { score, geslaagd } = laatsteResultaat;
+    return `
+      <div class="card resultaat">
+        <div class="meta">${geslaagd ? 'Geslaagd!' : 'Helaas, niet gehaald'}</div>
+        <div class="score" style="color:${geslaagd ? 'var(--green)' : 'var(--red)'}">${score}%</div>
+        <div class="meta">Slaagdrempel: ${WI_SLAAGPERCENTAGE}%</div>
+        <button class="primary" style="margin-top:20px" onclick="scherm='lijst'; render();">${geslaagd ? 'Terug naar overzicht' : 'Terug — probeer het later opnieuw'}</button>
+      </div>
+    `;
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>

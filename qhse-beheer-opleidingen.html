@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Beheer Opleidingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+  input, select, textarea{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  textarea{ min-height:110px; resize:vertical; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .card.klikbaar{ cursor:pointer; }
+  .card.klikbaar:hover{ border-color:var(--accent); }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .chip{ display:inline-block; padding:6px 12px; border:1px solid var(--border); border-radius:20px; font-size:12.5px; cursor:pointer; margin:3px 4px 0 0; }
+  .chip.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .vraag-rij{ display:flex; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+  .vraag-rij:last-child{ border-bottom:none; }
+  .vraag-rij input[type=text]{ flex:1; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit beheerscherm is alleen voor Admin of KAM.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>Opleidingen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst';
+  let actiefId = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!['admin','kam'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    scherm = 'lijst';
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
+    else if(scherm === 'bewerken') inhoud.innerHTML = await renderBewerken();
+  }
+
+  async function renderLijst(){
+    const { data: werkinstructies, error } = await supabaseClient
+      .from('opleiding_werkinstructies').select('*, groepen(naam)').order('naam');
+    if(error) return '<div class="fout">Kon werkinstructies niet laden: ' + error.message + '</div>';
+    const rows = (werkinstructies||[]).map(w => `
+      <div class="card klikbaar" onclick="openBewerken('${w.id}')">
+        <div class="row">
+          <b>${w.naam}</b>
+          <span class="meta">v${w.versie} · ${w.koppeling_type === 'iedereen' ? 'Iedereen' : (w.groepen ? w.groepen.naam : 'Groep')}</span>
+        </div>
+        <div class="meta" style="margin-top:6px">Interval: ${w.interval_maanden} maanden</div>
+      </div>`).join('') || '<div class="meta">Nog geen werkinstructies.</div>';
+    return `
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(werkinstructies||[]).length} werkinstructies</span>
+        <button class="primary" onclick="nieuweWerkinstructie()">+ Nieuwe werkinstructie</button>
+      </div>
+      ${rows}
+    `;
+  }
+
+  async function nieuweWerkinstructie(){
+    const { data, error } = await supabaseClient
+      .from('opleiding_werkinstructies')
+      .insert({ organisatie_id: huidigProfiel.organisatie_id, naam: 'Nieuwe werkinstructie', koppeling_type: 'iedereen' })
+      .select().single();
+    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    actiefId = data.id;
+    scherm = 'bewerken';
+    await render();
+  }
+
+  async function openBewerken(id){
+    actiefId = id;
+    scherm = 'bewerken';
+    await render();
+  }
+
+  async function renderBewerken(){
+    const { data: w, error } = await supabaseClient.from('opleiding_werkinstructies').select('*').eq('id', actiefId).single();
+    if(error) return '<div class="fout">Kon werkinstructie niet laden: ' + error.message + '</div>';
+    const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
+    const { data: vragen } = await supabaseClient.from('opleiding_vragen').select('*').eq('werkinstructie_id', actiefId).order('volgorde');
+    const { data: gekoppeldePersonen } = await supabaseClient.from('opleiding_werkinstructie_personen').select('profiel_id').eq('werkinstructie_id', actiefId);
+    const gekoppeldeIds = new Set((gekoppeldePersonen||[]).map(p=>p.profiel_id));
+
+    let ledenHtml = '';
+    if(w.koppeling_type === 'groep' && w.koppeling_groep_id){
+      const { data: leden } = await supabaseClient
+        .from('groep_leden').select('profielen(id, voornaam, achternaam)').eq('groep_id', w.koppeling_groep_id);
+      ledenHtml = `
+        <div class="meta" style="margin:10px 0 6px">Beperk optioneel tot specifieke personen (niets aangevinkt = hele groep)</div>
+        ${(leden||[]).map(l => l.profielen ? `
+          <span class="chip ${gekoppeldeIds.has(l.profielen.id)?'actief':''}" onclick="togglePersoon('${l.profielen.id}')">${l.profielen.voornaam} ${l.profielen.achternaam}</span>
+        ` : '').join('')}
+      `;
+    }
+
+    const { data: registraties } = await supabaseClient
+      .from('opleiding_registraties').select('*, profielen(voornaam, achternaam)').eq('werkinstructie_id', actiefId).order('datum', { ascending:false });
+    const registratiesHtml = (registraties||[]).map(r => `
+      <div class="row" style="padding:6px 0; border-bottom:1px solid var(--border); font-size:12.5px;">
+        <span>${r.profielen ? r.profielen.voornaam + ' ' + r.profielen.achternaam : '—'} — v${r.versie}</span>
+        <span class="meta">${r.datum} · ${r.score} · ${r.geslaagd ? 'geslaagd' : 'niet geslaagd'}</span>
+      </div>`).join('') || '<div class="meta">Nog niemand heeft dit doorlopen.</div>';
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="bewNaam" value="${w.naam}">
+        <label>Interval (maanden)</label>
+        <input type="number" id="bewInterval" value="${w.interval_maanden}" min="1">
+
+        <label>Toegewezen aan</label>
+        <select id="bewKoppelType" onchange="render()">
+          <option value="iedereen" ${w.koppeling_type==='iedereen'?'selected':''}>Iedereen</option>
+          <option value="groep" ${w.koppeling_type==='groep'?'selected':''}>Specifieke groep</option>
+        </select>
+        <div style="margin-top:10px">
+          ${w.koppeling_type==='groep' ? `
+            <select id="bewGroep">
+              <option value="">— kies een groep —</option>
+              ${(groepen||[]).map(g => `<option value="${g.id}" ${w.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
+            </select>
+            ${ledenHtml}
+          ` : ''}
+        </div>
+
+        <div class="row" style="margin-top:18px">
+          <button class="ghost" onclick="verwijderWerkinstructie()">Verwijderen</button>
+          <button class="primary" onclick="opslaanBasis()">Basisgegevens opslaan</button>
+        </div>
+        <div class="fout verborgen" id="basisFout"></div>
+        <div class="melding verborgen" id="basisMelding"></div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Huidige versie — v${w.versie}</div>
+        <div class="meta" style="margin-bottom:10px">${w.wijzigingen}</div>
+        <p style="font-size:13px; white-space:pre-wrap; margin:0 0 14px;">${w.inhoud || '(nog geen inhoud)'}</p>
+
+        <div class="eyebrow">Vragen (${(vragen||[]).length})</div>
+        <div id="vragenLijst">${renderVragenLijst(vragen||[])}</div>
+        <button class="ghost" style="margin-top:8px" onclick="vraagToevoegen()">+ Vraag toevoegen</button>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Nieuwe versie uitgeven</div>
+        <div class="meta" style="margin-bottom:10px">Dit overschrijft de inhoud en zet iedereen die het al deed op 'moet opnieuw' — verplicht een wijzigingslog.</div>
+        <label style="margin-top:0">Wat is er gewijzigd? (verplicht)</label>
+        <textarea id="nieuweWijzigingen" placeholder="Bijv. 'Extra vraag toegevoegd na incident.'"></textarea>
+        <label>Nieuwe inhoud</label>
+        <textarea id="nieuweInhoud" style="min-height:140px">${w.inhoud}</textarea>
+        <div class="row" style="margin-top:14px">
+          <span></span>
+          <button class="primary" onclick="nieuweVersieUitgeven()">Versie publiceren</button>
+        </div>
+        <div class="fout verborgen" id="versieFout"></div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Wie heeft dit doorlopen</div>
+        ${registratiesHtml}
+      </div>
+    `;
+  }
+
+  function renderVragenLijst(vragen){
+    return vragen.map(v => `
+      <div class="vraag-rij">
+        <input type="text" value="${v.tekst.replace(/"/g,'&quot;')}" onchange="vraagBewerken('${v.id}', 'tekst', this.value)">
+        <select onchange="vraagBewerken('${v.id}', 'juist_antwoord', this.value)">
+          <option value="ja" ${v.juist_antwoord==='ja'?'selected':''}>juist: ja</option>
+          <option value="nee" ${v.juist_antwoord==='nee'?'selected':''}>juist: nee</option>
+        </select>
+        <button class="ghost" onclick="vraagVerwijderen('${v.id}')">Verwijder</button>
+      </div>`).join('') || '<div class="meta">Nog geen vragen.</div>';
+  }
+
+  async function vraagToevoegen(){
+    const { error } = await supabaseClient.from('opleiding_vragen').insert({
+      werkinstructie_id: actiefId, tekst: 'Nieuwe vraag', juist_antwoord: 'ja', volgorde: 99
+    });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+  async function vraagBewerken(id, veld, waarde){
+    await supabaseClient.from('opleiding_vragen').update({ [veld]: waarde }).eq('id', id);
+  }
+  async function vraagVerwijderen(id){
+    await supabaseClient.from('opleiding_vragen').delete().eq('id', id);
+    await render();
+  }
+
+  function togglePersoon(profielId){
+    const chip = event.target;
+    const actiefStatus = chip.classList.contains('actief');
+    if(actiefStatus){
+      supabaseClient.from('opleiding_werkinstructie_personen').delete().eq('werkinstructie_id', actiefId).eq('profiel_id', profielId).then(() => render());
+    } else {
+      supabaseClient.from('opleiding_werkinstructie_personen').insert({ werkinstructie_id: actiefId, profiel_id: profielId }).then(() => render());
+    }
+  }
+
+  async function opslaanBasis(){
+    const naam = document.getElementById('bewNaam').value.trim();
+    const interval_maanden = parseInt(document.getElementById('bewInterval').value, 10) || 12;
+    const koppeling_type = document.getElementById('bewKoppelType').value;
+    const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bewGroep').value || null) : null;
+    const foutEl = document.getElementById('basisFout');
+    const meldingEl = document.getElementById('basisMelding');
+    foutEl.classList.add('verborgen');
+    meldingEl.classList.add('verborgen');
+
+    const { error } = await supabaseClient.from('opleiding_werkinstructies')
+      .update({ naam, interval_maanden, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.';
+    meldingEl.classList.remove('verborgen');
+    await render();
+  }
+
+  async function nieuweVersieUitgeven(){
+    const wijzigingen = document.getElementById('nieuweWijzigingen').value.trim();
+    const inhoud = document.getElementById('nieuweInhoud').value.trim();
+    const foutEl = document.getElementById('versieFout');
+    foutEl.classList.add('verborgen');
+    if(!wijzigingen){ foutEl.textContent = 'Vul het wijzigingslog in.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { data: huidig } = await supabaseClient.from('opleiding_werkinstructies').select('versie').eq('id', actiefId).single();
+    const { error } = await supabaseClient.from('opleiding_werkinstructies')
+      .update({ versie: huidig.versie + 1, wijzigingen, inhoud }).eq('id', actiefId);
+    if(error){ foutEl.textContent = 'Publiceren mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await render();
+  }
+
+  async function verwijderWerkinstructie(){
+    if(!confirm('Deze werkinstructie definitief verwijderen?')) return;
+    const { error } = await supabaseClient.from('opleiding_werkinstructies').delete().eq('id', actiefId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    actiefId = null;
+    scherm = 'lijst';
+    await render();
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>
