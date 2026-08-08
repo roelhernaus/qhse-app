@@ -164,7 +164,7 @@
       .from('wpi_vragen').select('*').eq('formulier_id', formulierId).order('volgorde');
     if(vragenFout){ alert('Vragen laden mislukt: ' + vragenFout.message); return; }
 
-    actiefBezoek = { id: bezoek.id, formulier, vragen: vragen||[], antwoorden:{}, fotos:{} };
+    actiefBezoek = { id: bezoek.id, formulier, vragen: vragen||[], antwoorden:{}, fotos:{}, previews:{} };
     scherm = 'invullen';
     await render();
   }
@@ -173,8 +173,20 @@
     actiefBezoek.antwoorden[vraagId] = waarde;
     render();
   }
-  function toggleFoto(vraagId){
-    actiefBezoek.fotos[vraagId] = !actiefBezoek.fotos[vraagId];
+  async function uploadFoto(vraagId, inputEl){
+    const file = inputEl.files[0];
+    if(!file) return;
+    actiefBezoek.previews[vraagId] = URL.createObjectURL(file);
+    const statusEl = document.getElementById('fotoStatus' + vraagId);
+    if(statusEl){ statusEl.textContent = 'Uploaden…'; statusEl.className = 'meta'; }
+    const extensie = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const pad = `${huidigProfiel.organisatie_id}/${actiefBezoek.id}/${vraagId}-${Date.now()}.${extensie}`;
+    const { error } = await supabaseClient.storage.from('wpi-fotos').upload(pad, file);
+    if(error){
+      if(statusEl){ statusEl.textContent = 'Upload mislukt: ' + error.message; statusEl.className = 'fout'; }
+      return;
+    }
+    actiefBezoek.fotos[vraagId] = pad;
     render();
   }
   function isNegatief(v, antwoord){
@@ -182,7 +194,7 @@
   }
 
   function renderInvullen(){
-    const { formulier, vragen, antwoorden, fotos } = actiefBezoek;
+    const { formulier, vragen, antwoorden, fotos, previews } = actiefBezoek;
     const rows = vragen.map(v => {
       const antwoord = antwoorden[v.id];
       const negatief = antwoord && isNegatief(v, antwoord);
@@ -196,10 +208,12 @@
           </div>
           <div class="toggle" style="margin-top:10px">${knoppen}</div>
           ${v.kritiek && negatief ? `
-            <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
-              <input type="checkbox" style="width:auto" ${fotos[v.id]?'checked':''} onchange="toggleFoto('${v.id}')">
-              Foto van de afwijking toegevoegd
-            </label>
+            <div style="margin-top:10px">
+              <label style="margin:0 0 5px">Foto van de afwijking</label>
+              <input type="file" accept="image/*" capture="environment" onchange="uploadFoto('${v.id}', this)">
+              ${previews[v.id] ? `<img src="${previews[v.id]}" style="width:100%; max-width:220px; border-radius:8px; margin-top:8px; display:block;">` : ''}
+              <div class="meta" id="fotoStatus${v.id}" style="margin-top:4px">${fotos[v.id] ? '✓ Geüpload' : ''}</div>
+            </div>
             ${!fotos[v.id] ? '<div class="waarschuwing">Verplicht bij een kritieke afwijking.</div>' : ''}
           ` : ''}
         </div>`;
@@ -222,6 +236,8 @@
   }
 
   async function annuleerBezoek(){
+    const paden = Object.values(actiefBezoek.fotos);
+    if(paden.length) await supabaseClient.storage.from('wpi-fotos').remove(paden);
     await supabaseClient.from('wpi_bezoeken').delete().eq('id', actiefBezoek.id);
     actiefBezoek = null;
     scherm = 'lijst';
@@ -231,7 +247,7 @@
   async function rondBezoekAf(){
     const { vragen, antwoorden, fotos, id } = actiefBezoek;
     const rijen = vragen.map(v => ({
-      bezoek_id: id, vraag_id: v.id, antwoord: antwoorden[v.id], foto_bevestigd: !!fotos[v.id]
+      bezoek_id: id, vraag_id: v.id, antwoord: antwoorden[v.id], foto_pad: fotos[v.id] || null
     }));
     const { error: antwoordFout } = await supabaseClient.from('wpi_antwoorden').insert(rijen);
     if(antwoordFout){
