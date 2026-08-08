@@ -127,13 +127,28 @@
       .order('datum', { ascending:false }).limit(15);
     if(sesFout) return '<div class="fout">Kon geschiedenis niet laden: ' + sesFout.message + '</div>';
 
+    const magBibliotheekBeheren = ['admin','kam'].includes(huidigProfiel.rol);
     const bibRows = (bibliotheek||[]).map(t => `
-      <div class="card row">
-        <div>
-          <b>${t.naam}</b>
-          ${t.verplicht ? '<span class="tag verplicht" style="margin-left:8px">Verplicht</span>' : ''}
+      <div class="card">
+        <div class="row">
+          <div>
+            <b>${t.naam}</b>
+            ${t.verplicht ? '<span class="tag verplicht" style="margin-left:8px">Verplicht</span>' : ''}
+          </div>
+          <button class="primary" onclick="startGeven('${t.id}','${t.naam.replace(/'/g,"\\'")}')">Geef deze toolbox</button>
         </div>
-        <button class="primary" onclick="startGeven('${t.id}','${t.naam.replace(/'/g,"\\'")}')">Geef deze toolbox</button>
+        <div class="row" style="margin-top:10px">
+          ${t.pdf_pad
+            ? `<button class="ghost" onclick="bekijkMateriaal('${t.pdf_pad}')">📄 Materiaal bekijken</button>`
+            : `<span class="meta">Nog geen materiaal toegevoegd.</span>`}
+          ${magBibliotheekBeheren ? `
+            <label class="ghost" style="display:inline-block; padding:9px 14px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; margin:0;">
+              ${t.pdf_pad ? 'Vervangen' : 'PDF toevoegen'}
+              <input type="file" accept="application/pdf" style="display:none" onchange="uploadMateriaal('${t.id}', this)">
+            </label>
+          ` : ''}
+        </div>
+        <div class="meta" id="materiaalStatus${t.id}" style="margin-top:6px"></div>
       </div>`).join('') || '<div class="meta">Nog geen toolboxen in de bibliotheek.</div>';
 
     const sesRows = (sessies||[]).map(s => `
@@ -151,6 +166,24 @@
       <div class="eyebrow" style="margin-top:22px">Recent gegeven</div>
       ${sesRows}
     `;
+  }
+
+  async function bekijkMateriaal(pad){
+    const { data, error } = await supabaseClient.storage.from('toolbox-materiaal').createSignedUrl(pad, 300);
+    if(error){ alert('Kon materiaal niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+  async function uploadMateriaal(bibliotheekId, inputEl){
+    const file = inputEl.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('materiaalStatus' + bibliotheekId);
+    statusEl.textContent = 'Uploaden…';
+    const pad = `${huidigProfiel.organisatie_id}/${bibliotheekId}-${Date.now()}.pdf`;
+    const { error: uploadFout } = await supabaseClient.storage.from('toolbox-materiaal').upload(pad, file);
+    if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
+    const { error: updateFout } = await supabaseClient.from('toolbox_bibliotheek').update({ pdf_pad: pad }).eq('id', bibliotheekId);
+    if(updateFout){ statusEl.textContent = 'Koppelen mislukt: ' + updateFout.message; return; }
+    await render();
   }
 
   async function startGeven(toolboxId, toolboxNaam){
