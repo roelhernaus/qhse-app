@@ -214,7 +214,8 @@
     const input = document.getElementById('chatInvoer' + id);
     const tekst = input.value.trim();
     if(!tekst) return;
-    await supabaseClient.from('melding_berichten').insert({ melding_id: id, afzender_id: huidigProfiel.id, tekst });
+    const { error } = await supabaseClient.from('melding_berichten').insert({ melding_id: id, afzender_id: huidigProfiel.id, tekst });
+    if(error){ alert('Bericht versturen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
 
@@ -251,17 +252,21 @@
       const isOpen = chatOpenId === m.id;
       let berichtenHtml = '';
       if(isOpen){
-        const { data: berichten } = await supabaseClient
+        const { data: berichten, error: berichtenFout } = await supabaseClient
           .from('melding_berichten').select('*, profielen(voornaam, achternaam)')
           .eq('melding_id', m.id).order('aangemaakt_op', { ascending:true });
-        berichtenHtml = (berichten||[]).map(b=>{
-          const vanMij = b.afzender_id === huidigProfiel.id;
-          const naam = b.profielen ? (b.profielen.voornaam + ' ' + b.profielen.achternaam) : '—';
-          return `<div class="bericht ${vanMij?'mij':''}">
-            <div class="bel">${b.tekst}</div>
-            <div class="tijd">${naam} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
-          </div>`;
-        }).join('') || '<div class="meta">Nog geen berichten.</div>';
+        if(berichtenFout){
+          berichtenHtml = '<div class="fout">Kon berichten niet laden: ' + berichtenFout.message + '</div>';
+        } else {
+          berichtenHtml = (berichten||[]).map(b=>{
+            const vanMij = b.afzender_id === huidigProfiel.id;
+            const naam = b.profielen ? (b.profielen.voornaam + ' ' + b.profielen.achternaam) : '—';
+            return `<div class="bericht ${vanMij?'mij':''}">
+              <div class="bel">${b.tekst}</div>
+              <div class="tijd">${naam} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+            </div>`;
+          }).join('') || '<div class="meta">Nog geen berichten.</div>';
+        }
       }
       chatHtml = `
         <div class="chat">
