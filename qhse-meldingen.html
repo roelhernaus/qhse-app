@@ -199,11 +199,13 @@
   function setTab(t){ tabActief = t; ververs(); }
 
   async function neemInBehandeling(id){
-    await supabaseClient.from('meldingen').update({ actiehouder_id: huidigProfiel.id, status: 'In behandeling' }).eq('id', id);
+    const { error } = await supabaseClient.from('meldingen').update({ actiehouder_id: huidigProfiel.id, status: 'In behandeling' }).eq('id', id);
+    if(error){ alert('In behandeling nemen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
   async function markeerAfgehandeld(id){
-    await supabaseClient.from('meldingen').update({ status: 'Afgehandeld' }).eq('id', id);
+    const { error } = await supabaseClient.from('meldingen').update({ status: 'Afgehandeld' }).eq('id', id);
+    if(error){ alert('Afhandelen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
   async function toggleChat(id){
