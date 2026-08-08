@@ -204,14 +204,14 @@
         <input type="text" value="${aanvraagData.uniekId}" disabled>
 
         <label>Eigendom</label>
-        <select id="aanvEigendom" onchange="aanvraagData.eigendom=this.value; render();">
-          <option value="eigen" ${aanvraagData.eigendom==='eigen'?'selected':''}>Eigen materieel</option>
-          <option value="gehuurd" ${aanvraagData.eigendom==='gehuurd'?'selected':''}>Gehuurd</option>
+        <select id="aanvEigendom" onchange="toggleVerhuurderVeld()">
+          <option value="eigen">Eigen materieel</option>
+          <option value="gehuurd">Gehuurd</option>
         </select>
-        ${aanvraagData.eigendom==='gehuurd' ? `
+        <div id="verhuurderBlok" class="verborgen">
           <label>Verhuurder</label>
           <input type="text" id="aanvVerhuurder">
-        ` : ''}
+        </div>
 
         <label>Merk</label>
         <input type="text" id="aanvMerk">
@@ -219,12 +219,12 @@
         <input type="text" id="aanvType">
 
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
-          <input type="checkbox" id="aanvSticker" style="width:auto" onchange="render()"> Keuringssticker aanwezig
+          <input type="checkbox" id="aanvSticker" style="width:auto" onchange="toggleStickerDatumVeld()"> Keuringssticker aanwezig
         </label>
-        ${document.getElementById('aanvSticker') && document.getElementById('aanvSticker').checked ? `
+        <div id="stickerDatumBlok" class="verborgen">
           <label>Datum op de sticker</label>
           <input type="date" id="aanvStickerDatum">
-        ` : ''}
+        </div>
 
         <label>Foto van het arbeidsmiddel (verplicht)</label>
         <input type="file" accept="image/*" capture="environment" id="aanvFotoMiddel">
@@ -238,6 +238,15 @@
         <div class="fout verborgen" id="aanvFout"></div>
       </div>
     `;
+  }
+
+  function toggleVerhuurderVeld(){
+    const eigendom = document.getElementById('aanvEigendom').value;
+    document.getElementById('verhuurderBlok').classList.toggle('verborgen', eigendom !== 'gehuurd');
+  }
+  function toggleStickerDatumVeld(){
+    const aanwezig = document.getElementById('aanvSticker').checked;
+    document.getElementById('stickerDatumBlok').classList.toggle('verborgen', !aanwezig);
   }
 
   async function verstuurAanvraag(){
