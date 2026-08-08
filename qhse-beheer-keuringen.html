@@ -86,8 +86,9 @@
 
   let huidigProfiel = null;
   let tabActief = 'register'; // 'register' | 'onbekend'
-  let scherm = 'lijst'; // 'lijst' | 'middel'
+  let scherm = 'lijst'; // 'lijst' | 'middel' | 'aanvraagDetail'
   let actiefId = null;
+  let actiefAanvraagId = null;
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -138,6 +139,7 @@
       </div>`;
     let inhoudHtml = '';
     if(scherm === 'middel') inhoudHtml = await renderMiddel();
+    else if(scherm === 'aanvraagDetail') inhoudHtml = await renderAanvraagDetail();
     else if(tabActief === 'register') inhoudHtml = await renderRegister();
     else inhoudHtml = await renderOnbekend();
     inhoud.innerHTML = tabsHtml + inhoudHtml;
@@ -275,28 +277,47 @@
       .eq('status', 'nieuw').order('aangemaakt_op', { ascending:false });
     if(error) return '<div class="fout">Kon aanvragen niet laden: ' + error.message + '</div>';
     const rows = (aanvragen||[]).map(a => `
-      <div class="card">
+      <div class="card klikbaar" onclick="openAanvraagDetail('${a.id}')">
         <div class="row">
           <b>${a.uniek_id}</b>
           <span class="meta">${new Date(a.aangemaakt_op).toLocaleString('nl-NL')}</span>
         </div>
         <div class="meta" style="margin-top:6px">Aangevraagd door ${a.profielen ? a.profielen.voornaam + ' ' + a.profielen.achternaam : '—'}</div>
-        <div style="font-size:13px; margin-top:8px">
-          ${a.eigendom === 'gehuurd' ? `Gehuurd${a.verhuurder ? ' via ' + a.verhuurder : ''}` : 'Eigen materieel'}<br>
-          ${a.merk ? 'Merk: ' + a.merk + '<br>' : ''}
-          ${a.type ? 'Type: ' + a.type + '<br>' : ''}
-          Keuringssticker: ${a.keuringssticker_aanwezig ? 'Aanwezig' + (a.keuringssticker_datum ? ' (' + new Date(a.keuringssticker_datum).toLocaleDateString('nl-NL') + ')' : '') : 'Niet aanwezig'}
-        </div>
-        <div class="row" style="margin-top:10px; gap:8px">
-          ${a.foto_arbeidsmiddel_pad ? `<button class="ghost" onclick="bekijkAanvraagFoto('${a.foto_arbeidsmiddel_pad}')">📷 Foto middel</button>` : ''}
-          ${a.foto_uniek_nummer_pad ? `<button class="ghost" onclick="bekijkAanvraagFoto('${a.foto_uniek_nummer_pad}')">📷 Foto nummer</button>` : ''}
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button class="ghost" onclick="verwerkAanvraag('${a.id}')">Markeer afgehandeld</button>
-          <button class="primary" onclick="voegToeVanuitAanvraag('${a.id}','${a.uniek_id}','${a.merk||''}','${a.type||''}')">+ Toevoegen aan register</button>
-        </div>
       </div>`).join('') || '<div class="meta">Geen openstaande aanvragen.</div>';
     return rows;
+  }
+
+  async function openAanvraagDetail(id){
+    actiefAanvraagId = id;
+    scherm = 'aanvraagDetail';
+    await render();
+  }
+
+  async function renderAanvraagDetail(){
+    const { data: a, error } = await supabaseClient
+      .from('arbeidsmiddel_aanvragen').select('*, profielen(voornaam, achternaam)').eq('id', actiefAanvraagId).single();
+    if(error) return '<div class="fout">Kon aanvraag niet laden: ' + error.message + '</div>';
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <b>${a.uniek_id}</b>
+        <div class="meta" style="margin-top:4px">Aangevraagd door ${a.profielen ? a.profielen.voornaam + ' ' + a.profielen.achternaam : '—'} · ${new Date(a.aangemaakt_op).toLocaleString('nl-NL')}</div>
+        <div style="font-size:13.5px; margin-top:14px; line-height:1.7">
+          <b>Eigendom:</b> ${a.eigendom === 'gehuurd' ? 'Gehuurd' + (a.verhuurder ? ' via ' + a.verhuurder : '') : 'Eigen materieel'}<br>
+          <b>Merk:</b> ${a.merk || '—'}<br>
+          <b>Type:</b> ${a.type || '—'}<br>
+          <b>Keuringssticker:</b> ${a.keuringssticker_aanwezig ? 'Aanwezig' + (a.keuringssticker_datum ? ' (' + new Date(a.keuringssticker_datum).toLocaleDateString('nl-NL') + ')' : '') : 'Niet aanwezig'}
+        </div>
+        <div class="row" style="margin-top:14px; gap:8px">
+          ${a.foto_arbeidsmiddel_pad ? `<button class="ghost" onclick="bekijkAanvraagFoto('${a.foto_arbeidsmiddel_pad}')">📷 Foto arbeidsmiddel</button>` : ''}
+          ${a.foto_uniek_nummer_pad ? `<button class="ghost" onclick="bekijkAanvraagFoto('${a.foto_uniek_nummer_pad}')">📷 Foto uniek nummer</button>` : ''}
+        </div>
+        <div class="row" style="margin-top:18px">
+          <button class="ghost" onclick="verwerkAanvraag('${a.id}')">Afwijzen / markeer afgehandeld</button>
+          <button class="primary" onclick="voegToeVanuitAanvraag('${a.id}','${a.uniek_id}','${(a.merk||'').replace(/'/g,"\\'")}','${(a.type||'').replace(/'/g,"\\'")}')">+ Toevoegen aan register</button>
+        </div>
+      </div>
+    `;
   }
 
   async function bekijkAanvraagFoto(pad){
@@ -311,12 +332,14 @@
     });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
     await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld' }).eq('id', aanvraagId);
+    scherm = 'lijst';
     await render();
   }
 
   async function verwerkAanvraag(id){
     const { error } = await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld' }).eq('id', id);
     if(error){ alert('Mislukt: ' + error.message); return; }
+    scherm = 'lijst';
     await render();
   }
 
