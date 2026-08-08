@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Keuringen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:600px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  input, textarea{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:10px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  .statuskaart{ border-radius:14px; padding:22px; text-align:center; margin-top:16px; }
+  .statuskaart.groen{ background:var(--green-dim); }
+  .statuskaart.rood{ background:var(--red-dim); }
+  .statuskaart.oranje{ background:var(--amber-dim); }
+  .statuskaart .titel{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; }
+  .statuskaart.groen .titel{ color:var(--green); }
+  .statuskaart.rood .titel{ color:var(--red); }
+  .statuskaart.oranje .titel{ color:var(--amber); }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem</div>
+      <h1>Keuringen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let laatsteResultaat = null; // { status:'groen'|'rood'|'oranje', middel, keuring, opgezochtId }
+  let meldFormOpen = false;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    render();
+  }
+
+  function render(){
+    document.getElementById('inhoud').innerHTML = `
+      <div class="card">
+        <label style="margin-top:0">Uniek ID van het arbeidsmiddel</label>
+        <input type="text" id="zoekId" placeholder="Bijv. HB-2024-011" onkeydown="if(event.key==='Enter') zoekOp()">
+        <button class="primary" style="width:100%; margin-top:12px" onclick="zoekOp()">Opzoeken</button>
+      </div>
+      ${laatsteResultaat ? renderResultaat() : ''}
+    `;
+  }
+
+  async function zoekOp(){
+    const uniekId = document.getElementById('zoekId').value.trim();
+    if(!uniekId) return;
+    meldFormOpen = false;
+
+    const { data: middel, error: middelFout } = await supabaseClient
+      .from('arbeidsmiddelen').select('*').eq('uniek_id', uniekId).maybeSingle();
+
+    if(middelFout){ alert('Zoeken mislukt: ' + middelFout.message); return; }
+
+    if(!middel){
+      await supabaseClient.from('keuring_opzoekingen').insert({
+        organisatie_id: huidigProfiel.organisatie_id, onbekend_uniek_id: uniekId, opgezocht_door: huidigProfiel.id
+      });
+      laatsteResultaat = { status:'oranje', uniekId };
+      render();
+      return;
+    }
+
+    const { data: laatsteKeuring } = await supabaseClient
+      .from('keuringen').select('*').eq('arbeidsmiddel_id', middel.id).order('datum', { ascending:false }).limit(1).maybeSingle();
+
+    await supabaseClient.from('keuring_opzoekingen').insert({
+      organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_id: middel.id, opgezocht_door: huidigProfiel.id
+    });
+
+    if(!laatsteKeuring){
+      laatsteResultaat = { status:'oranje', uniekId, middel, geenKeuring:true };
+    } else {
+      const verlopen = laatsteKeuring.volgende_keuring && new Date(laatsteKeuring.volgende_keuring) < new Date();
+      const status = (laatsteKeuring.resultaat === 'goedgekeurd' && !verlopen) ? 'groen' : 'rood';
+      laatsteResultaat = { status, middel, keuring: laatsteKeuring, verlopen };
+    }
+    render();
+  }
+
+  function renderResultaat(){
+    const r = laatsteResultaat;
+    if(r.status === 'oranje' && !r.middel){
+      return `
+        <div class="statuskaart oranje">
+          <div class="titel">Onbekend ID</div>
+          <div class="meta" style="margin-top:6px">'${r.uniekId}' staat niet in het register. Dit is automatisch gemeld bij de beheerder.</div>
+        </div>`;
+    }
+    if(r.status === 'oranje' && r.geenKeuring){
+      return `
+        <div class="statuskaart oranje">
+          <div class="titel">${r.middel.type}</div>
+          <div class="meta" style="margin-top:6px">Bekend in het register, maar nog geen keuring vastgelegd.</div>
+        </div>`;
+    }
+    const titel = r.status === 'groen' ? 'Geldig' : (r.verlopen ? 'Verlopen' : 'Afgekeurd');
+    return `
+      <div class="statuskaart ${r.status}">
+        <div class="titel">${titel}</div>
+        <div class="meta" style="margin-top:6px">${r.middel.type} — ${r.middel.uniek_id}</div>
+        ${r.keuring.volgende_keuring ? `<div class="meta">Volgende keuring: ${new Date(r.keuring.volgende_keuring).toLocaleDateString('nl-NL')}</div>` : ''}
+        ${r.keuring.reden ? `<div class="meta">Reden: ${r.keuring.reden}</div>` : ''}
+        ${r.keuring.rapport_pad ? `<button class="ghost" style="margin-top:10px" onclick="bekijkRapport('${r.keuring.rapport_pad}')">📄 Bekijk keuringsrapport (PDF)</button>` : ''}
+      </div>`;
+  }
+
+  async function bekijkRapport(pad){
+    const { data, error } = await supabaseClient.storage.from('keuringen-rapporten').createSignedUrl(pad, 300);
+    if(error){ alert('Kon rapport niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>
