@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Verbindingstest</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --red:#c0392b; --red-dim:#fbeae8;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); padding:20px;
+  }
+  .box{ width:100%; max-width:420px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:6px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:22px; margin:0 0 22px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:14px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+    font-family:'Inter',sans-serif; font-size:14px; background:#fafaf9;
+  }
+  input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  button{
+    width:100%; margin-top:20px; padding:11px; border:none; border-radius:8px;
+    background:var(--accent); color:#fff; font-family:'Inter',sans-serif; font-weight:600;
+    font-size:14px; cursor:pointer;
+  }
+  button:hover{ opacity:.92; }
+  button.secundair{ background:transparent; border:1px solid var(--border); color:var(--text); margin-top:10px; }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:14px; display:none; }
+  .resultaat{ display:none; }
+  .profiel-rij{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+  .profiel-rij:last-child{ border-bottom:none; }
+  .profiel-rij span:first-child{ color:var(--text-soft); }
+  .status-ok{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--accent); font-weight:600; margin-bottom:14px; }
+  .stip{ width:7px; height:7px; border-radius:50%; background:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="box">
+  <div class="eyebrow">QHSE-systeem — verbindingstest</div>
+  <h1>Inloggen</h1>
+
+  <div class="card">
+    <!-- Inlogformulier -->
+    <div id="loginBlok">
+      <label for="email">E-mailadres</label>
+      <input type="email" id="email" placeholder="jij@bedrijf.nl" autocomplete="username">
+      <label for="wachtwoord">Wachtwoord</label>
+      <input type="password" id="wachtwoord" autocomplete="current-password">
+      <button onclick="login()">Inloggen</button>
+      <div class="fout" id="foutmelding"></div>
+    </div>
+
+    <!-- Resultaat na inloggen -->
+    <div class="resultaat" id="resultaatBlok">
+      <div class="status-ok"><span class="stip"></span> Verbinding met Supabase geslaagd</div>
+      <div class="profiel-rij"><span>Naam</span><span id="rNaam">—</span></div>
+      <div class="profiel-rij"><span>Rol</span><span id="rRol">—</span></div>
+      <div class="profiel-rij"><span>Organisatie</span><span id="rOrg">—</span></div>
+      <div class="profiel-rij"><span>In dienst</span><span id="rDienst">—</span></div>
+      <button class="secundair" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==== Verbinding met jullie Supabase-project ====
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function login(){
+    const email = document.getElementById('email').value.trim();
+    const wachtwoord = document.getElementById('wachtwoord').value;
+    const foutEl = document.getElementById('foutmelding');
+    foutEl.style.display = 'none';
+
+    if(!email || !wachtwoord){
+      foutEl.textContent = 'Vul zowel e-mailadres als wachtwoord in.';
+      foutEl.style.display = 'block';
+      return;
+    }
+
+    try{
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){
+        foutEl.textContent = 'Inloggen mislukt: ' + error.message;
+        foutEl.style.display = 'block';
+        return;
+      }
+      await toonProfiel();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout (waarschijnlijk een netwerk/CORS-probleem): ' + (e && e.message ? e.message : e);
+      foutEl.style.display = 'block';
+      console.error(e);
+    }
+  }
+
+  async function toonProfiel(){
+    const { data: { user } } = await supabase.auth.getUser();
+    if(!user) return;
+
+    const { data: profiel, error } = await supabase
+      .from('profielen')
+      .select('voornaam, achternaam, rol, in_dienst, organisaties(naam)')
+      .eq('id', user.id)
+      .single();
+
+    const foutEl = document.getElementById('foutmelding');
+    if(error){
+      foutEl.textContent = 'Ingelogd, maar geen profiel gevonden: ' + error.message;
+      foutEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('rNaam').textContent = profiel.voornaam + ' ' + profiel.achternaam;
+    document.getElementById('rRol').textContent = profiel.rol;
+    document.getElementById('rOrg').textContent = profiel.organisaties ? profiel.organisaties.naam : '—';
+    document.getElementById('rDienst').textContent = profiel.in_dienst ? 'Ja' : 'Nee';
+
+    document.getElementById('loginBlok').style.display = 'none';
+    document.getElementById('resultaatBlok').style.display = 'block';
+  }
+
+  async function uitloggen(){
+    await supabase.auth.signOut();
+    document.getElementById('resultaatBlok').style.display = 'none';
+    document.getElementById('loginBlok').style.display = 'block';
+    document.getElementById('email').value = '';
+    document.getElementById('wachtwoord').value = '';
+  }
+
+  // Als er al een sessie actief is (bijv. na een refresh), meteen het profiel tonen
+  supabase.auth.getSession().then(({ data:{ session } }) => {
+    if(session) toonProfiel();
+  });
+</script>
+</body>
+</html>
