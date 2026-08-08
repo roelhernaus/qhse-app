@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Meldingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3; --blue:#2f5f9d;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:760px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+  input, textarea, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; }
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .tab{ padding:7px 14px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .badge{ background:var(--red); color:#fff; border-radius:10px; padding:1px 7px; font-size:10.5px; margin-left:5px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .tag.anoniem{ background:var(--amber-dim); color:var(--amber); }
+  .status{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; }
+  .status.Nieuw{ background:var(--red-dim); color:var(--red); }
+  .status.In-behandeling{ background:var(--amber-dim); color:var(--amber); }
+  .status.Afgehandeld{ background:var(--green-dim); color:var(--green); }
+  .omschrijving{ font-size:13.5px; margin:10px 0; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .chat{ margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .bericht{ max-width:80%; margin-bottom:8px; }
+  .bericht.mij{ margin-left:auto; text-align:right; }
+  .bericht .bel{ display:inline-block; padding:7px 11px; border-radius:10px; font-size:12.5px; background:#f2f2f0; }
+  .bericht.mij .bel{ background:var(--blue); color:#fff; }
+  .bericht .tijd{ font-size:10px; color:var(--text-soft); margin-top:2px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem</div>
+      <h1>Meldingen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+
+  <div class="row" style="margin-bottom:16px">
+    <div class="tabs">
+      <div class="tab" id="tabOntvangen" onclick="setTab('ontvangen')">Ontvangen</div>
+      <div class="tab" id="tabGemaakt" onclick="setTab('gemaakt')">Gemaakt door mij</div>
+    </div>
+    <button class="primary" onclick="toggleNieuw()" id="btnNieuw">+ Nieuwe melding</button>
+  </div>
+
+  <div class="card verborgen" id="nieuwFormulier">
+    <label>Type</label>
+    <select id="nieuwType" onchange="checkAnoniemOptie()">
+      <option>Onveilige situatie</option>
+      <option>Incident</option>
+      <option>Verbetervoorstel</option>
+    </select>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:12px">
+      <input type="checkbox" id="nieuwAnoniem" style="width:auto"> Anoniem melden
+    </label>
+    <div class="meta" id="anoniemUitleg" style="margin-top:2px">Niet mogelijk bij Incident.</div>
+    <label>Omschrijving</label>
+    <textarea id="nieuwOmschrijving" rows="3"></textarea>
+    <div class="row" style="margin-top:14px">
+      <span></span>
+      <button class="primary" onclick="nieuweMeldingVersturen()">Versturen</button>
+    </div>
+    <div class="fout verborgen" id="nieuwFout"></div>
+  </div>
+
+  <div id="lijst"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let tabActief = 'ontvangen';
+  let nieuwOpen = false;
+  let chatOpenId = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await ververs();
+  }
+
+  function checkAnoniemOptie(){
+    const type = document.getElementById('nieuwType').value;
+    const chk = document.getElementById('nieuwAnoniem');
+    const mag = type !== 'Incident';
+    chk.disabled = !mag;
+    if(!mag) chk.checked = false;
+    document.getElementById('anoniemUitleg').textContent = mag ? 'Alleen mogelijk bij Onveilige situatie of Verbetervoorstel.' : 'Niet mogelijk bij Incident.';
+  }
+  function toggleNieuw(){
+    nieuwOpen = !nieuwOpen;
+    document.getElementById('nieuwFormulier').classList.toggle('verborgen', !nieuwOpen);
+    document.getElementById('btnNieuw').textContent = nieuwOpen ? 'Annuleren' : '+ Nieuwe melding';
+    checkAnoniemOptie();
+  }
+  async function nieuweMeldingVersturen(){
+    const type = document.getElementById('nieuwType').value;
+    const anoniem = document.getElementById('nieuwAnoniem').checked;
+    const omschrijving = document.getElementById('nieuwOmschrijving').value.trim();
+    const foutEl = document.getElementById('nieuwFout');
+    foutEl.classList.add('verborgen');
+    if(!omschrijving){ foutEl.textContent = 'Vul een omschrijving in.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.from('meldingen').insert({
+      organisatie_id: (await organisatieId()),
+      type, anoniem, omschrijving,
+      melder_id: huidigProfiel.id,
+      ernst: 'amber'
+    });
+    if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    document.getElementById('nieuwOmschrijving').value = '';
+    toggleNieuw();
+    await ververs();
+  }
+  let cachedOrgId = null;
+  async function organisatieId(){
+    if(cachedOrgId) return cachedOrgId;
+    const { data } = await supabaseClient.from('profielen').select('organisatie_id').eq('id', huidigProfiel.id).single();
+    cachedOrgId = data.organisatie_id;
+    return cachedOrgId;
+  }
+
+  function setTab(t){ tabActief = t; ververs(); }
+
+  async function neemInBehandeling(id){
+    await supabaseClient.from('meldingen').update({ actiehouder_id: huidigProfiel.id, status: 'In behandeling' }).eq('id', id);
+    await ververs();
+  }
+  async function markeerAfgehandeld(id){
+    await supabaseClient.from('meldingen').update({ status: 'Afgehandeld' }).eq('id', id);
+    await ververs();
+  }
+  async function toggleChat(id){
+    chatOpenId = (chatOpenId === id) ? null : id;
+    await ververs();
+  }
+  async function verstuurBericht(id){
+    const input = document.getElementById('chatInvoer' + id);
+    const tekst = input.value.trim();
+    if(!tekst) return;
+    await supabaseClient.from('melding_berichten').insert({ melding_id: id, afzender_id: huidigProfiel.id, tekst });
+    await ververs();
+  }
+
+  async function ververs(){
+    document.getElementById('tabOntvangen').className = 'tab' + (tabActief==='ontvangen' ? ' actief' : '');
+    document.getElementById('tabGemaakt').className = 'tab' + (tabActief==='gemaakt' ? ' actief' : '');
+
+    let query = supabaseClient.from('meldingen_view').select('*').order('aangemaakt_op', { ascending:false });
+    if(tabActief === 'ontvangen'){
+      query = query.or('actiehouder_id.eq.' + huidigProfiel.id + ',and(actiehouder_id.is.null)');
+    } else {
+      query = query.eq('melder_id', huidigProfiel.id);
+    }
+    const { data: meldingen, error } = await query;
+    if(error){ document.getElementById('lijst').innerHTML = '<div class="fout">Kon meldingen niet laden: ' + error.message + '</div>'; return; }
+
+    const lijstEl = document.getElementById('lijst');
+    if(!meldingen || !meldingen.length){
+      lijstEl.innerHTML = '<div class="meta">Niets te tonen.</div>';
+      return;
+    }
+    const kaarten = await Promise.all(meldingen.map(renderKaart));
+    lijstEl.innerHTML = kaarten.join('');
+  }
+
+  async function renderKaart(m){
+    const statusClass = m.status.replace(' ', '-');
+    const nietToegewezen = !m.actiehouder_id;
+    const magClaimen = nietToegewezen && (huidigProfiel.rol === 'admin' || huidigProfiel.rol === 'kam' || huidigProfiel.rol === 'leidinggevende');
+    const isBetrokkene = m.actiehouder_id === huidigProfiel.id;
+
+    let chatHtml = '';
+    if(!m.anoniem){
+      const isOpen = chatOpenId === m.id;
+      let berichtenHtml = '';
+      if(isOpen){
+        const { data: berichten } = await supabaseClient
+          .from('melding_berichten').select('*, profielen(voornaam, achternaam)')
+          .eq('melding_id', m.id).order('aangemaakt_op', { ascending:true });
+        berichtenHtml = (berichten||[]).map(b=>{
+          const vanMij = b.afzender_id === huidigProfiel.id;
+          const naam = b.profielen ? (b.profielen.voornaam + ' ' + b.profielen.achternaam) : '—';
+          return `<div class="bericht ${vanMij?'mij':''}">
+            <div class="bel">${b.tekst}</div>
+            <div class="tijd">${naam} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+          </div>`;
+        }).join('') || '<div class="meta">Nog geen berichten.</div>';
+      }
+      chatHtml = `
+        <div class="chat">
+          <button class="ghost" onclick="toggleChat('${m.id}')">${isOpen?'Chat sluiten':'💬 Chat'}</button>
+          ${isOpen ? `
+            <div style="margin-top:10px">${berichtenHtml}</div>
+            <div class="row" style="margin-top:10px; gap:8px">
+              <input type="text" id="chatInvoer${m.id}" placeholder="Typ een bericht…">
+              <button class="primary" onclick="verstuurBericht('${m.id}')">Verstuur</button>
+            </div>
+          ` : ''}
+        </div>`;
+    }
+
+    return `<div class="card">
+      <div class="row">
+        <div>
+          <span class="tag">${m.type}</span>
+          ${m.anoniem ? '<span class="tag anoniem">Anoniem</span>' : ''}
+        </div>
+        <span class="status ${statusClass}">${m.status}</span>
+      </div>
+      <div class="omschrijving">${m.omschrijving}</div>
+      <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : 'In behandeling'} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+      <div class="row" style="margin-top:12px">
+        <span></span>
+        <div style="display:flex; gap:8px">
+          ${magClaimen ? `<button class="ghost" onclick="neemInBehandeling('${m.id}')">Neem in behandeling</button>` : ''}
+          ${isBetrokkene && m.status!=='Afgehandeld' ? `<button class="ghost" onclick="markeerAfgehandeld('${m.id}')">Markeer afgehandeld</button>` : ''}
+        </div>
+      </div>
+      ${chatHtml}
+    </div>`;
+  }
+
+  // Als er al een sessie actief is (bijv. na een refresh)
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>
