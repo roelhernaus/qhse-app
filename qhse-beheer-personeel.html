@@ -166,6 +166,8 @@
     return `<div class="meta" style="margin-bottom:12px">${(profielen||[]).length} medewerkers</div>${rows}`;
   }
 
+  let bewBevoegdheden = [];
+
   async function openBewerken(id){
     actiefProfielId = id;
     scherm = 'bewerken';
@@ -175,6 +177,12 @@
   async function renderBewerken(){
     const { data: p, error } = await supabaseClient.from('profielen').select('*').eq('id', actiefProfielId).single();
     if(error) return '<div class="fout">Kon profiel niet laden: ' + error.message + '</div>';
+    const { data: categorieen } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
+    bewBevoegdheden = [...(p.keuringsbevoegdheden || [])];
+    const bevoegdhedenHtml = (categorieen||[]).map(c => `
+      <span class="tag klikbaar ${bewBevoegdheden.includes(c.naam) ? 'bevoegd' : ''}" id="bev-${c.id}" onclick="toggleBevoegdheid('${c.naam.replace(/'/g,"\\'")}', 'bev-${c.id}')" style="cursor:pointer; margin:3px 4px 0 0; ${bewBevoegdheden.includes(c.naam) ? 'background:var(--accent-dim); color:var(--accent);' : ''}">${c.naam}</span>
+    `).join('') || '<div class="meta">Nog geen categorieën aangemaakt (via Instellingen).</div>';
+
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
@@ -188,6 +196,9 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bewInDienst" style="width:auto" ${p.in_dienst?'checked':''}> In dienst
         </label>
+        <label>Keuringsbevoegdheden</label>
+        <div class="meta" style="margin-bottom:6px">Alleen relevant voor de rol Keurmeester — bepaalt voor welke categorieën arbeidsmiddelen deze persoon zelf een keuring mag vastleggen.</div>
+        <div>${bevoegdhedenHtml}</div>
         <div class="row" style="margin-top:18px">
           <span></span>
           <button class="primary" onclick="opslaan('${p.id}')">Opslaan</button>
@@ -196,6 +207,22 @@
         <div class="melding verborgen" id="bewMelding"></div>
       </div>
     `;
+  }
+
+  function toggleBevoegdheid(naam, chipId){
+    const idx = bewBevoegdheden.indexOf(naam);
+    const chip = document.getElementById(chipId);
+    if(idx >= 0){
+      bewBevoegdheden.splice(idx, 1);
+      chip.classList.remove('bevoegd');
+      chip.style.background = '';
+      chip.style.color = '';
+    } else {
+      bewBevoegdheden.push(naam);
+      chip.classList.add('bevoegd');
+      chip.style.background = 'var(--accent-dim)';
+      chip.style.color = 'var(--accent)';
+    }
   }
 
   async function opslaan(id){
@@ -208,7 +235,7 @@
     meldingEl.classList.add('verborgen');
 
     const { error } = await supabaseClient.from('profielen')
-      .update({ personeelsnummer, rol, in_dienst }).eq('id', id);
+      .update({ personeelsnummer, rol, in_dienst, keuringsbevoegdheden: bewBevoegdheden }).eq('id', id);
     if(error){
       foutEl.textContent = 'Opslaan mislukt: ' + error.message;
       foutEl.classList.remove('verborgen');

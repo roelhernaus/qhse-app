@@ -103,6 +103,17 @@
     <div class="melding verborgen" id="huisstijlMelding"></div>
   </div>
 
+  <div class="eyebrow">Keuringscategorieën</div>
+  <div class="card">
+    <div class="meta" style="margin-bottom:10px">Deze lijst wordt gebruikt bij het indelen van arbeidsmiddelen en het toewijzen van keuringsbevoegdheden aan keurmeesters.</div>
+    <div id="categorieenLijst"></div>
+    <div class="row" style="margin-top:12px; gap:8px">
+      <input type="text" id="nieuweCategorie" placeholder="Nieuwe categorie…" onkeydown="if(event.key==='Enter') voegCategorieToe()">
+      <button class="ghost" onclick="voegCategorieToe()">+ Toevoegen</button>
+    </div>
+    <div class="fout verborgen" id="categorieFout"></div>
+  </div>
+
   <div class="eyebrow">Rollen &amp; rechten</div>
   <div class="callout">
     Nieuwe, zelf te bedenken rollen aanmaken kan nog niet — de rollen hieronder zijn vast verankerd in de beveiligingsregels van elke module. Dat volledig aanpasbaar maken is een grotere ingreep die we apart kunnen oppakken als je dat wilt.
@@ -199,6 +210,37 @@
         document.getElementById('logoPreview').style.display = 'block';
       }
     }
+    await ververCategorieen();
+  }
+
+  async function ververCategorieen(){
+    const { data: categorieen, error } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
+    const foutEl = document.getElementById('categorieFout');
+    if(error){ foutEl.textContent = 'Kon categorieën niet laden: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    document.getElementById('categorieenLijst').innerHTML = (categorieen||[]).map(c => `
+      <div class="row" style="padding:6px 0">
+        <span style="font-size:13px">${c.naam}</span>
+        <button class="ghost" style="padding:4px 10px; font-size:12px" onclick="verwijderCategorie('${c.id}')">Verwijderen</button>
+      </div>
+    `).join('') || '<div class="meta">Nog geen categorieën.</div>';
+  }
+
+  async function voegCategorieToe(){
+    const naam = document.getElementById('nieuweCategorie').value.trim();
+    const foutEl = document.getElementById('categorieFout');
+    foutEl.classList.add('verborgen');
+    if(!naam) return;
+    const { error } = await supabaseClient.from('keuringscategorieen').insert({ organisatie_id: huidigeOrganisatie.id, naam });
+    if(error){ foutEl.textContent = 'Toevoegen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    document.getElementById('nieuweCategorie').value = '';
+    await ververCategorieen();
+  }
+
+  async function verwijderCategorie(id){
+    if(!confirm('Deze categorie verwijderen? Arbeidsmiddelen die deze categorie al gebruiken, behouden de tekst maar verwijzen niet meer naar deze lijst.')) return;
+    const { error } = await supabaseClient.from('keuringscategorieen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await ververCategorieen();
   }
 
   async function opslaanHuisstijl(){

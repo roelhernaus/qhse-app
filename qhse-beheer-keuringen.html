@@ -119,7 +119,7 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, keuringsbevoegdheden').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
     document.getElementById('login-scherm').classList.add('verborgen');
@@ -143,6 +143,7 @@
       </div>`;
     let inhoudHtml = '';
     if(scherm === 'middel') inhoudHtml = await renderMiddel();
+    else if(scherm === 'nieuw') inhoudHtml = await renderNieuwMiddel();
     else if(scherm === 'aanvraagDetail') inhoudHtml = await renderAanvraagDetail();
     else if(tabActief === 'register') inhoudHtml = await renderRegister();
     else inhoudHtml = await renderOnbekend();
@@ -170,12 +171,50 @@
   }
 
   async function nieuwMiddel(){
-    const uniek_id = prompt('Uniek ID (het nummer dat op het middel staat):');
-    if(!uniek_id) return;
-    const type = prompt('Type (bijv. Hoogwerker, Steiger, Elektrisch handgereedschap):') || '';
+    scherm = 'nieuw';
+    await render();
+  }
+
+  async function renderNieuwMiddel(){
+    const { data: categorieen } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar register</button>
+      <div class="card">
+        <label style="margin-top:0">Uniek ID</label>
+        <input type="text" id="nmUniekId" placeholder="Het nummer dat op het middel staat">
+        <label>Type</label>
+        <input type="text" id="nmType" placeholder="Bijv. Hoogwerker, Steiger, Boormachine">
+        <label>Categorie</label>
+        <select id="nmCategorie">
+          <option value="">— geen categorie —</option>
+          ${(categorieen||[]).map(c => `<option value="${c.naam}">${c.naam}</option>`).join('')}
+        </select>
+        <label>Herkomst</label>
+        <select id="nmHerkomst">
+          <option value="eigen">Eigen</option>
+          <option value="gehuurd">Gehuurd</option>
+        </select>
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuwMiddel()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="nmFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanNieuwMiddel(){
+    const uniek_id = document.getElementById('nmUniekId').value.trim();
+    const type = document.getElementById('nmType').value.trim();
+    const categorie = document.getElementById('nmCategorie').value || null;
+    const herkomst = document.getElementById('nmHerkomst').value;
+    const foutEl = document.getElementById('nmFout');
+    foutEl.classList.add('verborgen');
+    if(!uniek_id){ foutEl.textContent = 'Uniek ID is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+
     const { data, error } = await supabaseClient
-      .from('arbeidsmiddelen').insert({ organisatie_id: huidigProfiel.organisatie_id, uniek_id, type }).select().single();
-    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+      .from('arbeidsmiddelen').insert({ organisatie_id: huidigProfiel.organisatie_id, uniek_id, type, categorie, herkomst }).select().single();
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     actiefId = data.id;
     scherm = 'middel';
     await render();
@@ -190,6 +229,7 @@
   async function renderMiddel(){
     const { data: m, error } = await supabaseClient.from('arbeidsmiddelen').select('*').eq('id', actiefId).single();
     if(error) return '<div class="fout">Kon arbeidsmiddel niet laden: ' + error.message + '</div>';
+    const { data: categorieen } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
     const { data: keuringen } = await supabaseClient
       .from('keuringen').select('*, profielen(voornaam, achternaam)').eq('arbeidsmiddel_id', actiefId).order('datum', { ascending:false });
 
@@ -205,14 +245,10 @@
         ${k.rapport_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkRapport('${k.rapport_pad}')">📄 Rapport bekijken</button>` : `<div class="meta" style="margin-top:8px; color:var(--red)">Geen rapport gekoppeld</div>`}
       </div>`).join('') || '<div class="meta">Nog geen keuringen vastgelegd.</div>';
 
-    return `
-      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar register</button>
-      <div class="card">
-        <b>${m.uniek_id}</b> — ${m.type}
-        <div class="meta" style="margin-top:4px">${m.categorie || 'geen categorie'} · ${m.herkomst}</div>
-      </div>
+    const magVastleggen = ['admin','kam'].includes(huidigProfiel.rol)
+      || (huidigProfiel.rol === 'keurmeester' && m.categorie && (huidigProfiel.keuringsbevoegdheden||[]).includes(m.categorie));
 
-      <div class="eyebrow" style="margin-top:20px">Nieuwe keuring vastleggen</div>
+    const vastleggenBlok = magVastleggen ? `
       <div class="card">
         <label style="margin-top:0">Resultaat</label>
         <select id="nkResultaat" onchange="toggleRedenVeld()">
@@ -233,10 +269,57 @@
         </div>
         <div class="fout verborgen" id="nkFout"></div>
       </div>
+    ` : `
+      <div class="card">
+        <div class="meta">Je bent niet bevoegd om een keuring vast te leggen voor de categorie "${m.categorie || 'geen categorie'}". Vraag admin/HR om deze bevoegdheid toe te voegen via Personeel, of pas hieronder de categorie van dit arbeidsmiddel aan.</div>
+      </div>
+    `;
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar register</button>
+      <div class="card">
+        <label style="margin-top:0">Uniek ID</label>
+        <input type="text" id="bewUniekId" value="${m.uniek_id}">
+        <label>Type</label>
+        <input type="text" id="bewType" value="${m.type || ''}">
+        <label>Categorie</label>
+        <select id="bewCategorie">
+          <option value="">— geen categorie —</option>
+          ${(categorieen||[]).map(c => `<option value="${c.naam}" ${m.categorie===c.naam?'selected':''}>${c.naam}</option>`).join('')}
+        </select>
+        <label>Herkomst</label>
+        <select id="bewHerkomst">
+          <option value="eigen" ${m.herkomst==='eigen'?'selected':''}>Eigen</option>
+          <option value="gehuurd" ${m.herkomst==='gehuurd'?'selected':''}>Gehuurd</option>
+        </select>
+        <div class="row" style="margin-top:14px">
+          <span></span>
+          <button class="primary" onclick="opslaanMiddel()">Opslaan</button>
+        </div>
+        <div class="fout verborgen" id="bewMiddelFout"></div>
+        <div class="melding verborgen" id="bewMiddelMelding"></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Nieuwe keuring vastleggen</div>
+      ${vastleggenBlok}
 
       <div class="eyebrow" style="margin-top:20px">Geschiedenis</div>
       ${keuringRows}
     `;
+  }
+
+  async function opslaanMiddel(){
+    const uniek_id = document.getElementById('bewUniekId').value.trim();
+    const type = document.getElementById('bewType').value.trim();
+    const categorie = document.getElementById('bewCategorie').value || null;
+    const herkomst = document.getElementById('bewHerkomst').value;
+    const foutEl = document.getElementById('bewMiddelFout');
+    const meldingEl = document.getElementById('bewMiddelMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('arbeidsmiddelen').update({ uniek_id, type, categorie, herkomst }).eq('id', actiefId);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+    await render();
   }
 
   function toggleRedenVeld(){
