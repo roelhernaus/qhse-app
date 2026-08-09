@@ -11,6 +11,11 @@
     --bg:#f4f5f3; --bg-card:#ffffff; --border:#e2e3df; --text-primary:#1c1d1b; --text-secondary:#5a5c57; --text-tertiary:#9a9c96;
     --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10);
   }
+  body.donker{
+    --bg:#15181a; --bg-card:#1e2225; --border:#2c3134; --text-primary:#f2f3f1; --text-secondary:#a8ada9; --text-tertiary:#6d726e;
+    --accent:#4a9c85; --accent-dim:rgba(74,156,133,0.15);
+  }
+  body{ transition: background .15s ease, color .15s ease; }
   *{ box-sizing:border-box; margin:0; padding:0; }
   body{ font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-primary); height:100vh; overflow:hidden; }
   .font-display{ font-family:'Oswald',sans-serif; }
@@ -71,8 +76,26 @@
   #topbar .avatar{ width:28px; height:28px; border-radius:50%; background:var(--accent-dim); color:var(--accent); display:flex; align-items:center; justify-content:center; font-family:'Oswald',sans-serif; font-weight:600; font-size:11px; }
   #topbar .whoami .naam{ font-size:13px; font-weight:600; }
   #topbar .whoami .rol{ font-size:11px; color:var(--text-tertiary); }
-  #frameGebied{ flex:1; position:relative; background:var(--bg); }
+  #frameGebied{ flex:1; position:relative; background:var(--bg); overflow-y:auto; }
   #frameGebied iframe{ position:absolute; inset:0; width:100%; height:100%; border:none; }
+  #dashboardScherm{ padding:28px 32px; max-width:960px; }
+  #dashboardScherm .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:4px; }
+  #dashboardScherm h2{ font-family:'Oswald',sans-serif; font-weight:600; font-size:26px; margin-bottom:22px; }
+  .tegel-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; }
+  .tegel{
+    background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:18px;
+    cursor:pointer; transition:.12s ease; display:flex; flex-direction:column; gap:10px;
+  }
+  .tegel:hover{ border-color:var(--accent); transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,0.06); }
+  .tegel .tegel-icon{
+    width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  }
+  .tegel .tegel-icon svg{ width:19px; height:19px; }
+  .tegel .tegel-naam{ font-size:13.5px; font-weight:600; }
+  .theme-toggle{
+    width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--bg-card);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; margin-right:8px;
+  }
 </style>
 </head>
 <body>
@@ -110,28 +133,9 @@
       </div>
     </div>
 
-    <div id="railItemsFrontend">
-      <div class="rail-groep">Voor jou</div>
-      <div class="rail-item" data-pagina="qhse-acties.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14l2 7v7a1 1 0 01-1 1H4a1 1 0 01-1-1v-7z"/></svg>Mijn Acties</div>
-      <div class="rail-item" data-pagina="qhse-meldingen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 21V4a1 1 0 011-1h9l5 5v3M4 15h9M4 10h6"/></svg>Meldingen</div>
-      <div class="rail-item" data-pagina="qhse-wpi.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 12l2 2 4-4"/><rect x="3" y="4" width="18" height="17" rx="2"/></svg>WPI</div>
-      <div class="rail-item" data-pagina="qhse-mbb.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/></svg>MBB</div>
-      <div class="rail-item" data-pagina="qhse-toolboxen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 21c0-3.5 2.7-6 6-6s6 2.5 6 6M14 21c0-2.8 1.8-5 4.5-5s4.5 2.2 4.5 5"/></svg>Toolboxen</div>
-      <div class="rail-item" data-pagina="qhse-opleidingen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>Opleidingen</div>
-      <div class="rail-item" data-pagina="qhse-stoffen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2v6L4.5 18a2 2 0 001.8 3h11.4a2 2 0 001.8-3L14 8V2"/><path d="M8.5 15h7"/></svg>Stoffen</div>
-      <div class="rail-item" data-pagina="qhse-keuringen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 005.4-5.4l-2.8 2.8-2-2z"/></svg>Keuringen</div>
-      <div class="rail-item" data-pagina="qhse-logboeken.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1.5"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>Logboeken</div>
-    </div>
-
-    <div id="railItemsBackend" class="verborgen">
-      <div class="rail-groep">Beheer</div>
-      <div class="rail-item" data-pagina="qhse-beheer-personeel.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M16 13.6c2.9.3 5 2.6 5 5.7"/></svg>Personeel</div>
-      <div class="rail-item" data-pagina="qhse-beheer-toolboxen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 21c0-3.5 2.7-6 6-6s6 2.5 6 6M14 21c0-2.8 1.8-5 4.5-5s4.5 2.2 4.5 5"/></svg>Toolboxen</div>
-      <div class="rail-item" data-pagina="qhse-beheer-opleidingen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>Opleidingen</div>
-      <div class="rail-item" data-pagina="qhse-beheer-stoffen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2v6L4.5 18a2 2 0 001.8 3h11.4a2 2 0 001.8-3L14 8V2"/><path d="M8.5 15h7"/></svg>Stoffen</div>
-      <div class="rail-item" data-pagina="qhse-beheer-keuringen.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 005.4-5.4l-2.8 2.8-2-2z"/></svg>Keuringen</div>
-      <div class="rail-item" data-pagina="qhse-beheer-logboeken.html" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1.5"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>Logboeken</div>
-    </div>
+    <div class="rail-item" onclick="toonDashboard(); document.querySelectorAll('.rail-item').forEach(i=>i.classList.remove('actief'));" style="border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+    <div id="railItemsFrontend"></div>
+    <div id="railItemsBackend" class="verborgen"></div>
   </nav>
 
   <div id="hoofdgebied">
@@ -143,10 +147,18 @@
           <div class="rol" id="wieBenIkRol">—</div>
         </div>
       </div>
-      <button onclick="uitloggen()">Uitloggen</button>
+      <div style="display:flex; align-items:center;">
+        <div class="theme-toggle" onclick="wisselThema()" id="themeIcon">☀</div>
+        <button onclick="uitloggen()">Uitloggen</button>
+      </div>
     </div>
     <div id="frameGebied">
-      <iframe id="hoofdFrame" src=""></iframe>
+      <div id="dashboardScherm">
+        <div class="eyebrow">Overzicht</div>
+        <h2>Dashboard</h2>
+        <div class="tegel-grid" id="tegelGrid"></div>
+      </div>
+      <iframe id="hoofdFrame" src="" style="display:none"></iframe>
     </div>
   </div>
 </div>
@@ -156,6 +168,78 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  const ICONEN = {
+    acties: '<path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14l2 7v7a1 1 0 01-1 1H4a1 1 0 01-1-1v-7z"/>',
+    meldingen: '<path d="M4 21V4a1 1 0 011-1h9l5 5v3M4 15h9M4 10h6"/>',
+    wpi: '<path d="M9 12l2 2 4-4"/><rect x="3" y="4" width="18" height="17" rx="2"/>',
+    mbb: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/>',
+    toolboxen: '<circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 21c0-3.5 2.7-6 6-6s6 2.5 6 6M14 21c0-2.8 1.8-5 4.5-5s4.5 2.2 4.5 5"/>',
+    opleidingen: '<path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/>',
+    stoffen: '<path d="M10 2v6L4.5 18a2 2 0 001.8 3h11.4a2 2 0 001.8-3L14 8V2"/><path d="M8.5 15h7"/>',
+    keuringen: '<path d="M14.7 6.3a4 4 0 00-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 005.4-5.4l-2.8 2.8-2-2z"/>',
+    logboeken: '<rect x="4" y="3" width="16" height="18" rx="1.5"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>',
+    personeel: '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M16 13.6c2.9.3 5 2.6 5 5.7"/>'
+  };
+  const KLEUREN = ['#3FB8AF','#E2725B','#5B8DEF','#E8A33D','#8E6BC1','#4FB477','#C15B8E','#6B9BC1','#B57A10'];
+
+  const MODULES_FRONTEND = [
+    { naam:'Mijn Acties', pagina:'qhse-acties.html', icon:'acties' },
+    { naam:'Meldingen', pagina:'qhse-meldingen.html', icon:'meldingen' },
+    { naam:'WPI', pagina:'qhse-wpi.html', icon:'wpi' },
+    { naam:'MBB', pagina:'qhse-mbb.html', icon:'mbb' },
+    { naam:'Toolboxen', pagina:'qhse-toolboxen.html', icon:'toolboxen' },
+    { naam:'Opleidingen', pagina:'qhse-opleidingen.html', icon:'opleidingen' },
+    { naam:'Stoffen', pagina:'qhse-stoffen.html', icon:'stoffen' },
+    { naam:'Keuringen', pagina:'qhse-keuringen.html', icon:'keuringen' },
+    { naam:'Logboeken', pagina:'qhse-logboeken.html', icon:'logboeken' },
+  ];
+  const MODULES_BACKEND = [
+    { naam:'Personeel', pagina:'qhse-beheer-personeel.html', icon:'personeel' },
+    { naam:'Toolboxen', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen' },
+    { naam:'Opleidingen', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen' },
+    { naam:'Stoffen', pagina:'qhse-beheer-stoffen.html', icon:'stoffen' },
+    { naam:'Keuringen', pagina:'qhse-beheer-keuringen.html', icon:'keuringen' },
+    { naam:'Logboeken', pagina:'qhse-beheer-logboeken.html', icon:'logboeken' },
+  ];
+
+  function bouwRail(){
+    document.getElementById('railItemsFrontend').innerHTML = '<div class="rail-groep">Voor jou</div>' +
+      MODULES_FRONTEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
+    document.getElementById('railItemsBackend').innerHTML = '<div class="rail-groep">Beheer</div>' +
+      MODULES_BACKEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
+  }
+
+  function bouwTegels(lijst){
+    document.getElementById('tegelGrid').innerHTML = lijst.map((m,i) => `
+      <div class="tegel" onclick="openVanuitTegel('${m.pagina}')">
+        <div class="tegel-icon" style="background:${KLEUREN[i % KLEUREN.length]}22; color:${KLEUREN[i % KLEUREN.length]}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>
+        </div>
+        <div class="tegel-naam">${m.naam}</div>
+      </div>
+    `).join('');
+  }
+
+  function openVanuitTegel(pagina){
+    document.getElementById('dashboardScherm').style.display = 'none';
+    document.getElementById('hoofdFrame').style.display = 'block';
+    document.getElementById('hoofdFrame').src = pagina;
+    document.querySelectorAll('.rail-item').forEach(i => {
+      i.classList.toggle('actief', i.dataset.pagina === pagina);
+    });
+  }
+
+  function toonDashboard(){
+    document.getElementById('hoofdFrame').style.display = 'none';
+    document.getElementById('dashboardScherm').style.display = 'block';
+    document.querySelectorAll('.rail-item').forEach(i => i.classList.remove('actief'));
+  }
+
+  function wisselThema(){
+    document.body.classList.toggle('donker');
+    document.getElementById('themeIcon').textContent = document.body.classList.contains('donker') ? '☾' : '☀';
+  }
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -197,6 +281,8 @@
     document.getElementById('loginScherm').classList.add('verborgen');
     document.getElementById('appShell').classList.add('actief');
 
+    bouwRail();
+
     if(['admin','kam'].includes(profiel.rol)){
       document.getElementById('omgevingToggle').classList.remove('verborgen');
     }
@@ -209,15 +295,15 @@
     document.getElementById('btnBackend').classList.toggle('actief', omgeving==='backend');
     document.getElementById('railItemsFrontend').classList.toggle('verborgen', omgeving!=='frontend');
     document.getElementById('railItemsBackend').classList.toggle('verborgen', omgeving!=='backend');
-
-    const eersteGroep = omgeving==='frontend' ? 'railItemsFrontend' : 'railItemsBackend';
-    const eersteItem = document.querySelector('#' + eersteGroep + ' .rail-item');
-    if(eersteItem) ga(eersteItem);
+    bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : MODULES_BACKEND);
+    toonDashboard();
   }
 
   function ga(el){
     document.querySelectorAll('.rail-item').forEach(i => i.classList.remove('actief'));
     el.classList.add('actief');
+    document.getElementById('dashboardScherm').style.display = 'none';
+    document.getElementById('hoofdFrame').style.display = 'block';
     document.getElementById('hoofdFrame').src = el.dataset.pagina;
   }
 
