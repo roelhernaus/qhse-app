@@ -91,7 +91,11 @@
 
   let huidigProfiel = null;
   let tabActief = 'register'; // 'register' | 'aanvragen'
-  let scherm = 'lijst'; // 'lijst' | 'bewerken'
+  let scherm = 'lijst'; // 'lijst' | 'bewerken' | 'wik'
+  let wikStofId = null;
+  let wikData = { disclaimer_akkoord:false, clp_pictogrammen:[], pbm:'', ehbo:'', calamiteiten:'', opslag_afval:'', extra_tekst:'' };
+  let wikGeselecteerdeHZinnen = [];
+  let wikGeselecteerdePZinnen = [];
   let actiefId = null;
 
   function isCMR(stof){ return (stof.h_zinnen||[]).some(z => CMR_ZINNEN.includes(z)); }
@@ -145,6 +149,7 @@
       </div>`;
     let inhoudHtml = '';
     if(scherm === 'bewerken' && tabActief === 'register') inhoudHtml = await renderBewerkenStof();
+    else if(scherm === 'wik') inhoudHtml = await renderWik();
     else if(tabActief === 'register') inhoudHtml = await renderRegister();
     else inhoudHtml = await renderAanvragen();
     inhoud.innerHTML = tabsHtml + inhoudHtml;
@@ -220,6 +225,8 @@
         <div class="fout verborgen" id="bewFout"></div>
         <div class="melding verborgen" id="bewMelding"></div>
       </div>
+
+      <button class="primary" style="width:100%; margin-top:4px" onclick="openWik('${s.id}')">📋 WIK opstellen/bewerken</button>
     `;
   }
 
@@ -241,6 +248,239 @@
     const { error } = await supabaseClient.from('stoffen').delete().eq('id', actiefId);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     actiefId = null; scherm = 'lijst'; await render();
+  }
+
+  const PICTOGRAM_CODES = [
+    { code:'GHS01', label:'Ontplofbaar' }, { code:'GHS02', label:'Ontvlambaar' },
+    { code:'GHS03', label:'Oxiderend' }, { code:'GHS04', label:'Gas onder druk' },
+    { code:'GHS05', label:'Corrosief' }, { code:'GHS06', label:'Toxisch' },
+    { code:'GHS07', label:'Schadelijk/Irriterend' }, { code:'GHS08', label:'Gezondheidsgevaar' },
+    { code:'GHS09', label:'Milieugevaarlijk' }
+  ];
+
+  async function openWik(stofId){
+    wikStofId = stofId;
+    const { data: bestaand } = await supabaseClient.from('wik').select('*').eq('stof_id', stofId).maybeSingle();
+    if(bestaand){
+      wikData = bestaand;
+      const { data: hzGekoppeld } = await supabaseClient.from('wik_hzinnen_gekoppeld').select('wik_hzinnen(*)').eq('wik_id', bestaand.id);
+      wikGeselecteerdeHZinnen = (hzGekoppeld||[]).map(r=>r.wik_hzinnen).filter(Boolean);
+      const { data: pzGekoppeld } = await supabaseClient.from('wik_pzinnen_gekoppeld').select('wik_pzinnen(*)').eq('wik_id', bestaand.id);
+      wikGeselecteerdePZinnen = (pzGekoppeld||[]).map(r=>r.wik_pzinnen).filter(Boolean);
+    } else {
+      wikData = { disclaimer_akkoord:false, clp_pictogrammen:[], pbm:'', ehbo:'', calamiteiten:'', opslag_afval:'', extra_tekst:'' };
+      wikGeselecteerdeHZinnen = [];
+      wikGeselecteerdePZinnen = [];
+    }
+    scherm = 'wik';
+    await render();
+  }
+
+  async function renderWik(){
+    const { data: stof } = await supabaseClient.from('stoffen').select('*').eq('id', wikStofId).single();
+
+    const pictoHtml = await Promise.all(PICTOGRAM_CODES.map(async (p) => {
+      const pad = `${huidigProfiel.organisatie_id}/${p.code}.png`;
+      const { data } = await supabaseClient.storage.from('clp-pictogrammen').createSignedUrl(pad, 300);
+      const aan = wikData.clp_pictogrammen.includes(p.code);
+      return `
+        <div onclick="togglePictogram('${p.code}')" style="cursor:pointer; text-align:center; border:2px solid ${aan?'var(--accent)':'var(--border)'}; border-radius:10px; padding:8px; ${aan?'background:var(--accent-dim);':''}">
+          ${data ? `<img src="${data.signedUrl}" style="width:100%; aspect-ratio:1; object-fit:contain;">` : `<div style="width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-soft);">geen afb.</div>`}
+          <div style="font-size:10.5px; font-weight:600; margin-top:4px">${p.code}</div>
+        </div>
+      `;
+    }));
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='bewerken'; render();">← Terug naar ${stof.naam}</button>
+      <div class="card">
+        <b>WIK — ${stof.naam}</b>
+        <label style="display:flex; align-items:flex-start; gap:8px; margin-top:14px">
+          <input type="checkbox" id="wikDisclaimer" style="width:auto; margin-top:2px" ${wikData.disclaimer_akkoord?'checked':''}>
+          <span style="font-size:12.5px">Ik bevestig dat deze WIK is opgesteld of gecontroleerd door een arbeidshygiënist of toxicoloog. <b>(verplicht om op te slaan)</b></span>
+        </label>
+      </div>
+
+      <div class="eyebrow">Gevarenpictogrammen</div>
+      <div class="card">
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(80px, 1fr)); gap:10px;">${pictoHtml.join('')}</div>
+      </div>
+
+      <div class="eyebrow">H-/EUH-zinnen</div>
+      <div class="card">
+        <div id="wikHGeselecteerd">${renderGeselecteerdeZinnen(wikGeselecteerdeHZinnen, 'H')}</div>
+        <input type="text" id="wikZoekH" placeholder="Zoek op code of tekst…" oninput="filterZinnen('H')" style="margin-top:8px">
+        <div id="wikHResultaten" style="max-height:180px; overflow-y:auto; margin-top:6px"></div>
+        <div class="row" style="margin-top:10px; gap:6px">
+          <input type="text" id="wikEigenHCode" placeholder="Eigen code (bijv. H999)" style="max-width:160px">
+          <input type="text" id="wikEigenHTekst" placeholder="Eigen tekst">
+          <button class="ghost" onclick="voegEigenZinToe('H')">+ Toevoegen</button>
+        </div>
+      </div>
+
+      <div class="eyebrow">P-zinnen</div>
+      <div class="card">
+        <div id="wikPGeselecteerd">${renderGeselecteerdeZinnen(wikGeselecteerdePZinnen, 'P')}</div>
+        <input type="text" id="wikZoekP" placeholder="Zoek op code of tekst…" oninput="filterZinnen('P')" style="margin-top:8px">
+        <div id="wikPResultaten" style="max-height:180px; overflow-y:auto; margin-top:6px"></div>
+        <div class="row" style="margin-top:10px; gap:6px">
+          <input type="text" id="wikEigenPCode" placeholder="Eigen code (bijv. P999)" style="max-width:160px">
+          <input type="text" id="wikEigenPTekst" placeholder="Eigen tekst">
+          <button class="ghost" onclick="voegEigenZinToe('P')">+ Toevoegen</button>
+        </div>
+      </div>
+
+      <div class="eyebrow">Overige informatie</div>
+      <div class="card">
+        <label style="margin-top:0">Persoonlijke beschermingsmiddelen (PBM)</label>
+        <textarea id="wikPbm" rows="2" oninput="wikData.pbm=this.value">${wikData.pbm||''}</textarea>
+        <label>EHBO</label>
+        <textarea id="wikEhbo" rows="2" oninput="wikData.ehbo=this.value">${wikData.ehbo||''}</textarea>
+        <label>Calamiteiten / brand</label>
+        <textarea id="wikCalamiteiten" rows="2" oninput="wikData.calamiteiten=this.value">${wikData.calamiteiten||''}</textarea>
+        <label>Opslag / afval</label>
+        <textarea id="wikOpslagAfval" rows="2" oninput="wikData.opslag_afval=this.value">${wikData.opslag_afval||''}</textarea>
+        <label>Extra toelichting</label>
+        <textarea id="wikExtra" rows="2" oninput="wikData.extra_tekst=this.value">${wikData.extra_tekst||''}</textarea>
+        <div class="row" style="margin-top:16px">
+          <button class="ghost" onclick="printWik()">🖨️ Print WIK (A4)</button>
+          <button class="primary" onclick="opslaanWik()">Opslaan</button>
+        </div>
+        <div class="fout verborgen" id="wikFout"></div>
+        <div class="melding verborgen" id="wikMelding"></div>
+      </div>
+    `;
+  }
+
+  function renderGeselecteerdeZinnen(lijst, prefix){
+    if(!lijst.length) return '<div class="meta">Nog geen zinnen geselecteerd.</div>';
+    return lijst.map(z => `<span class="tag" style="margin:3px 4px 0 0; background:var(--accent-dim); color:var(--accent); cursor:pointer;" onclick="verwijderZin('${z.id}','${prefix}')">${z.code} ✕</span>`).join('');
+  }
+
+  function togglePictogram(code){
+    const idx = wikData.clp_pictogrammen.indexOf(code);
+    if(idx >= 0) wikData.clp_pictogrammen.splice(idx, 1);
+    else wikData.clp_pictogrammen.push(code);
+    render();
+  }
+
+  async function filterZinnen(soort){
+    const zoekterm = document.getElementById('wikZoek' + soort).value.trim().toLowerCase();
+    const resultatenEl = document.getElementById('wik' + soort + 'Resultaten');
+    if(!zoekterm){ resultatenEl.innerHTML = ''; return; }
+    const tabel = soort === 'H' ? 'wik_hzinnen' : 'wik_pzinnen';
+    const { data } = await supabaseClient.from(tabel).select('*').order('code');
+    const geselecteerdeIds = new Set((soort==='H' ? wikGeselecteerdeHZinnen : wikGeselecteerdePZinnen).map(z=>z.id));
+    const gefilterd = (data||[]).filter(z => z.code.toLowerCase().includes(zoekterm) || z.tekst.toLowerCase().includes(zoekterm)).slice(0, 20);
+    resultatenEl.innerHTML = gefilterd.map(z => `
+      <div onclick="${geselecteerdeIds.has(z.id)?'':`selecteerZin('${z.id}','${soort}')`}" style="padding:7px 8px; border-bottom:1px solid var(--border); font-size:12.5px; cursor:${geselecteerdeIds.has(z.id)?'default':'pointer'}; ${geselecteerdeIds.has(z.id)?'opacity:.4;':''}">
+        <b>${z.code}</b> — ${z.tekst}
+      </div>
+    `).join('') || '<div class="meta" style="padding:6px 0">Niets gevonden.</div>';
+  }
+
+  async function selecteerZin(id, soort){
+    const tabel = soort === 'H' ? 'wik_hzinnen' : 'wik_pzinnen';
+    const { data: zin } = await supabaseClient.from(tabel).select('*').eq('id', id).single();
+    if(!zin) return;
+    if(soort === 'H') wikGeselecteerdeHZinnen.push(zin); else wikGeselecteerdePZinnen.push(zin);
+    document.getElementById('wik' + soort + 'Geselecteerd').innerHTML = renderGeselecteerdeZinnen(soort==='H'?wikGeselecteerdeHZinnen:wikGeselecteerdePZinnen, soort);
+    document.getElementById('wikZoek' + soort).value = '';
+    document.getElementById('wik' + soort + 'Resultaten').innerHTML = '';
+  }
+
+  function verwijderZin(id, soort){
+    if(soort === 'H') wikGeselecteerdeHZinnen = wikGeselecteerdeHZinnen.filter(z=>z.id!==id);
+    else wikGeselecteerdePZinnen = wikGeselecteerdePZinnen.filter(z=>z.id!==id);
+    document.getElementById('wik' + soort + 'Geselecteerd').innerHTML = renderGeselecteerdeZinnen(soort==='H'?wikGeselecteerdeHZinnen:wikGeselecteerdePZinnen, soort);
+  }
+
+  async function voegEigenZinToe(soort){
+    const code = document.getElementById('wikEigen' + soort + 'Code').value.trim().toUpperCase();
+    const tekst = document.getElementById('wikEigen' + soort + 'Tekst').value.trim();
+    if(!code || !tekst) return;
+    const tabel = soort === 'H' ? 'wik_hzinnen' : 'wik_pzinnen';
+    const insertData = soort === 'H' ? { organisatie_id: huidigProfiel.organisatie_id, code, tekst, soort:'H' } : { organisatie_id: huidigProfiel.organisatie_id, code, tekst };
+    const { data: zin, error } = await supabaseClient.from(tabel).insert(insertData).select().single();
+    if(error){ alert('Toevoegen mislukt (mogelijk bestaat deze code al): ' + error.message); return; }
+    if(soort === 'H') wikGeselecteerdeHZinnen.push(zin); else wikGeselecteerdePZinnen.push(zin);
+    document.getElementById('wikEigen' + soort + 'Code').value = '';
+    document.getElementById('wikEigen' + soort + 'Tekst').value = '';
+    document.getElementById('wik' + soort + 'Geselecteerd').innerHTML = renderGeselecteerdeZinnen(soort==='H'?wikGeselecteerdeHZinnen:wikGeselecteerdePZinnen, soort);
+  }
+
+  async function opslaanWik(){
+    const foutEl = document.getElementById('wikFout');
+    const meldingEl = document.getElementById('wikMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const disclaimer_akkoord = document.getElementById('wikDisclaimer').checked;
+    if(!disclaimer_akkoord){ foutEl.textContent = 'De disclaimer moet bevestigd zijn voordat je kan opslaan.'; foutEl.classList.remove('verborgen'); return; }
+
+    const payload = {
+      organisatie_id: huidigProfiel.organisatie_id, stof_id: wikStofId,
+      disclaimer_akkoord: true, disclaimer_akkoord_door: huidigProfiel.id, disclaimer_akkoord_op: new Date().toISOString(),
+      clp_pictogrammen: wikData.clp_pictogrammen,
+      pbm: wikData.pbm || null, ehbo: wikData.ehbo || null, calamiteiten: wikData.calamiteiten || null,
+      opslag_afval: wikData.opslag_afval || null, extra_tekst: wikData.extra_tekst || null,
+      bijgewerkt_op: new Date().toISOString()
+    };
+    const { data: opgeslagen, error } = await supabaseClient.from('wik').upsert(payload, { onConflict: 'stof_id' }).select().single();
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    wikData = opgeslagen;
+
+    await supabaseClient.from('wik_hzinnen_gekoppeld').delete().eq('wik_id', opgeslagen.id);
+    if(wikGeselecteerdeHZinnen.length){
+      await supabaseClient.from('wik_hzinnen_gekoppeld').insert(wikGeselecteerdeHZinnen.map(z => ({ wik_id: opgeslagen.id, hzin_id: z.id })));
+    }
+    await supabaseClient.from('wik_pzinnen_gekoppeld').delete().eq('wik_id', opgeslagen.id);
+    if(wikGeselecteerdePZinnen.length){
+      await supabaseClient.from('wik_pzinnen_gekoppeld').insert(wikGeselecteerdePZinnen.map(z => ({ wik_id: opgeslagen.id, pzin_id: z.id })));
+    }
+
+    meldingEl.textContent = '✓ WIK opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function printWik(){
+    const { data: stof } = await supabaseClient.from('stoffen').select('*').eq('id', wikStofId).single();
+    const pictoImgs = await Promise.all(wikData.clp_pictogrammen.map(async (code) => {
+      const pad = `${huidigProfiel.organisatie_id}/${code}.png`;
+      const { data } = await supabaseClient.storage.from('clp-pictogrammen').createSignedUrl(pad, 300);
+      return data ? `<img src="${data.signedUrl}" style="width:70px; height:70px; object-fit:contain; margin:4px;">` : '';
+    }));
+
+    const venster = window.open('', '_blank');
+    venster.document.write(`
+      <html><head><title>WIK — ${stof.naam}</title>
+      <style>
+        body{ font-family: Arial, sans-serif; padding:30px; color:#1c1d1b; }
+        h1{ font-size:20px; border-bottom:3px solid #2f6f5e; padding-bottom:8px; }
+        h2{ font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:#5a5c57; margin-top:20px; border-bottom:1px solid #ccc; padding-bottom:4px; }
+        .zin{ font-size:12px; margin:4px 0; }
+        .picto-rij{ display:flex; flex-wrap:wrap; }
+        table{ border-collapse:collapse; margin-top:6px; }
+        td{ padding:3px 10px 3px 0; font-size:12px; vertical-align:top; }
+      </style></head><body>
+        <h1>Werkplekinstructiekaart — ${stof.naam}</h1>
+        <table>
+          <tr><td><b>CAS-nummer</b></td><td>${stof.cas_nummer || '—'}</td></tr>
+          <tr><td><b>Fabrikant</b></td><td>${stof.fabrikant || '—'}</td></tr>
+        </table>
+        <h2>Gevarenpictogrammen</h2>
+        <div class="picto-rij">${pictoImgs.join('') || '<i>geen geselecteerd</i>'}</div>
+        <h2>H-/EUH-zinnen</h2>
+        ${wikGeselecteerdeHZinnen.map(z => `<div class="zin"><b>${z.code}</b> — ${z.tekst}</div>`).join('') || '<i>geen</i>'}
+        <h2>P-zinnen</h2>
+        ${wikGeselecteerdePZinnen.map(z => `<div class="zin"><b>${z.code}</b> — ${z.tekst}</div>`).join('') || '<i>geen</i>'}
+        <h2>Persoonlijke beschermingsmiddelen</h2><div class="zin">${(wikData.pbm||'—').replace(/\n/g,'<br>')}</div>
+        <h2>EHBO</h2><div class="zin">${(wikData.ehbo||'—').replace(/\n/g,'<br>')}</div>
+        <h2>Calamiteiten / brand</h2><div class="zin">${(wikData.calamiteiten||'—').replace(/\n/g,'<br>')}</div>
+        <h2>Opslag / afval</h2><div class="zin">${(wikData.opslag_afval||'—').replace(/\n/g,'<br>')}</div>
+        ${wikData.extra_tekst ? `<h2>Extra toelichting</h2><div class="zin">${wikData.extra_tekst.replace(/\n/g,'<br>')}</div>` : ''}
+        <p style="margin-top:30px; font-size:10px; color:#999;">Opgesteld/gecontroleerd door een arbeidshygiënist of toxicoloog. Gegenereerd op ${new Date().toLocaleDateString('nl-NL')}.</p>
+        <script>window.print();<\/script>
+      </body></html>
+    `);
+    venster.document.close();
   }
 
   async function uploadSDS(inputEl){
