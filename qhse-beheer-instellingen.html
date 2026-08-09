@@ -105,10 +105,20 @@
 
   <div class="eyebrow">Streefaantallen</div>
   <div class="card">
-    <div class="meta" style="margin-bottom:10px">Standaard aantal per jaar, gebruikt in het Compliance-dashboard. Kan per persoon overruled worden via Personeel.</div>
-    <label style="margin-top:0">WPI per jaar (standaard)</label>
+    <div class="meta" style="margin-bottom:10px">Standaard aantal per boekjaar, gebruikt in het Compliance-dashboard. Kan per persoon overruled worden via Personeel.</div>
+    <label style="margin-top:0">Boekjaar begint op</label>
+    <div class="row" style="gap:8px">
+      <select id="boekjaarDag" style="max-width:100px"></select>
+      <select id="boekjaarMaand">
+        <option value="1">januari</option><option value="2">februari</option><option value="3">maart</option>
+        <option value="4">april</option><option value="5">mei</option><option value="6">juni</option>
+        <option value="7">juli</option><option value="8">augustus</option><option value="9">september</option>
+        <option value="10">oktober</option><option value="11">november</option><option value="12">december</option>
+      </select>
+    </div>
+    <label>WPI per boekjaar (standaard)</label>
     <input type="number" id="streefWpi" min="0">
-    <label>MBB per jaar (standaard)</label>
+    <label>MBB per boekjaar (standaard)</label>
     <input type="number" id="streefMbb" min="0">
     <div class="row" style="margin-top:14px">
       <span></span>
@@ -226,6 +236,10 @@
     document.getElementById('appNaam').value = org.app_naam || '';
     document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
     document.getElementById('streefMbb').value = org.mbb_streefaantal_per_jaar ?? 4;
+    const dagSelect = document.getElementById('boekjaarDag');
+    dagSelect.innerHTML = Array.from({length:31}, (_,i)=>i+1).map(d => `<option value="${d}">${d}</option>`).join('');
+    dagSelect.value = org.boekjaar_start_dag ?? 1;
+    document.getElementById('boekjaarMaand').value = org.boekjaar_start_maand ?? 1;
     if(org.logo_pad){
       const { data } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(org.logo_pad, 300);
       if(data){
@@ -320,10 +334,13 @@
   async function opslaanStreefaantallen(){
     const wpi_streefaantal_per_jaar = parseInt(document.getElementById('streefWpi').value) || 0;
     const mbb_streefaantal_per_jaar = parseInt(document.getElementById('streefMbb').value) || 0;
+    const boekjaar_start_dag = parseInt(document.getElementById('boekjaarDag').value) || 1;
+    const boekjaar_start_maand = parseInt(document.getElementById('boekjaarMaand').value) || 1;
     const foutEl = document.getElementById('streefFout');
     const meldingEl = document.getElementById('streefMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
-    const { error } = await supabaseClient.from('organisaties').update({ wpi_streefaantal_per_jaar, mbb_streefaantal_per_jaar }).eq('id', huidigeOrganisatie.id);
+    const { error } = await supabaseClient.from('organisaties')
+      .update({ wpi_streefaantal_per_jaar, mbb_streefaantal_per_jaar, boekjaar_start_dag, boekjaar_start_maand }).eq('id', huidigeOrganisatie.id);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
   }

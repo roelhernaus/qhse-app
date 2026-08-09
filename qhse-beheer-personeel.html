@@ -196,6 +196,11 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bewInDienst" style="width:auto" ${p.in_dienst?'checked':''}> In dienst
         </label>
+        <label>Datum in dienst</label>
+        <input type="date" id="bewDatumInDienst" value="${p.datum_in_dienst || ''}">
+        <label>Datum uit dienst (indien van toepassing)</label>
+        <input type="date" id="bewDatumUitDienst" value="${p.datum_uit_dienst || ''}">
+        <div class="meta" style="margin-top:4px">Deze datums bepalen mee hoeveel WPI/MBB deze persoon "year to date" redelijkerwijs kan hebben gedaan in het Compliance-dashboard.</div>
         <label>WPI-streefaantal (leeg = organisatiestandaard)</label>
         <input type="number" id="bewWpiStreef" min="0" value="${p.wpi_streefaantal_override ?? ''}" placeholder="Standaard gebruiken">
         <label>MBB-streefaantal (leeg = organisatiestandaard)</label>
@@ -233,6 +238,8 @@
     const personeelsnummer = document.getElementById('bewPersoneelsnr').value.trim() || null;
     const rol = document.getElementById('bewRol').value;
     const in_dienst = document.getElementById('bewInDienst').checked;
+    const datum_in_dienst = document.getElementById('bewDatumInDienst').value || null;
+    const datum_uit_dienst = document.getElementById('bewDatumUitDienst').value || null;
     const wpiStreefRaw = document.getElementById('bewWpiStreef').value;
     const mbbStreefRaw = document.getElementById('bewMbbStreef').value;
     const wpi_streefaantal_override = wpiStreefRaw === '' ? null : parseInt(wpiStreefRaw);
@@ -243,7 +250,7 @@
     meldingEl.classList.add('verborgen');
 
     const { error } = await supabaseClient.from('profielen')
-      .update({ personeelsnummer, rol, in_dienst, keuringsbevoegdheden: bewBevoegdheden, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
+      .update({ personeelsnummer, rol, in_dienst, datum_in_dienst, datum_uit_dienst, keuringsbevoegdheden: bewBevoegdheden, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
     if(error){
       foutEl.textContent = 'Opslaan mislukt: ' + error.message;
       foutEl.classList.remove('verborgen');

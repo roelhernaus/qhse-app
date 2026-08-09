@@ -153,11 +153,35 @@
     return [];
   }
 
+  function boekjaarStartDatum(vandaag, startMaand, startDag){
+    let jaar = vandaag.getFullYear();
+    let kandidaat = new Date(jaar, startMaand-1, startDag);
+    if(kandidaat > vandaag) kandidaat = new Date(jaar-1, startMaand-1, startDag);
+    return kandidaat;
+  }
+  function dagenTussen(a, b){
+    return Math.round((b - a) / (1000*60*60*24));
+  }
+  // Hoeveel dagen viel deze persoon binnen [boekjaarStart, vandaag] én binnen zijn eigen dienstverband?
+  function effectieveDagen(datumInDienst, datumUitDienst, boekjaarStart, vandaag){
+    const periodeStart = (datumInDienst && datumInDienst > boekjaarStart) ? datumInDienst : boekjaarStart;
+    const periodeEind = (datumUitDienst && datumUitDienst < vandaag) ? datumUitDienst : vandaag;
+    if(periodeEind < periodeStart) return 0;
+    return dagenTussen(periodeStart, periodeEind) + 1;
+  }
+
   async function berekenWpiMbb(soort){
     const { data: org } = await supabaseClient.from('organisaties').select('*').eq('id', huidigProfiel.organisatie_id).single();
     const standaardStreef = soort === 'wpi' ? (org.wpi_streefaantal_per_jaar ?? 12) : (org.mbb_streefaantal_per_jaar ?? 4);
 
-    let profielenQuery = supabaseClient.from('profielen').select('id, voornaam, achternaam, personeelsnummer, wpi_streefaantal_override, mbb_streefaantal_override').eq('in_dienst', true);
+    const vandaag = new Date();
+    const boekjaarStart = boekjaarStartDatum(vandaag, org.boekjaar_start_maand ?? 1, org.boekjaar_start_dag ?? 1);
+    const volgendBoekjaarStart = new Date(boekjaarStart); volgendBoekjaarStart.setFullYear(volgendBoekjaarStart.getFullYear()+1);
+    const totaalDagenBoekjaar = dagenTussen(boekjaarStart, volgendBoekjaarStart);
+
+    let profielenQuery = supabaseClient.from('profielen')
+      .select('id, voornaam, achternaam, personeelsnummer, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override')
+      .eq('in_dienst', true);
     if(soort === 'mbb'){
       const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
       if(!mgmtGroep) return { percentage:0, teller:0, noemer:0, detail:[] };
@@ -168,7 +192,6 @@
     const { data: profielen } = await profielenQuery;
     if(!profielen || !profielen.length) return { percentage:0, teller:0, noemer:0, detail:[] };
 
-    const jaarStart = new Date(new Date().getFullYear(), 0, 1);
     const { data: formulieren } = await supabaseClient.from('wpi_formulieren').select('id').eq('soort', soort);
     const formulierIds = (formulieren||[]).map(f=>f.id);
 
@@ -176,21 +199,25 @@
     if(formulierIds.length){
       const { data } = await supabaseClient
         .from('wpi_bezoeken').select('uitvoerder_id').in('formulier_id', formulierIds)
-        .eq('afgerond', true).gte('aangemaakt_op', jaarStart.toISOString());
+        .eq('afgerond', true).gte('aangemaakt_op', boekjaarStart.toISOString());
       bezoeken = data || [];
     }
 
     let totaalTeller = 0, totaalNoemer = 0;
     const detail = profielen.map(p => {
-      const streefaantal = (soort === 'wpi' ? p.wpi_streefaantal_override : p.mbb_streefaantal_override) ?? standaardStreef;
+      const jaarStreefaantal = (soort === 'wpi' ? p.wpi_streefaantal_override : p.mbb_streefaantal_override) ?? standaardStreef;
+      const datumInDienst = p.datum_in_dienst ? new Date(p.datum_in_dienst) : null;
+      const datumUitDienst = p.datum_uit_dienst ? new Date(p.datum_uit_dienst) : null;
+      const eigenDagen = effectieveDagen(datumInDienst, datumUitDienst, boekjaarStart, vandaag);
+      const streefaantalYtd = Math.round(jaarStreefaantal * (eigenDagen / totaalDagenBoekjaar) * 10) / 10;
       const werkelijk = bezoeken.filter(b => b.uitvoerder_id === p.id).length;
-      const percentage = streefaantal > 0 ? Math.round((Math.min(werkelijk, streefaantal) / streefaantal) * 100) : 100;
-      totaalTeller += Math.min(werkelijk, streefaantal);
-      totaalNoemer += streefaantal;
-      return { personeelsnummer: p.personeelsnummer || '—', naam: p.voornaam + ' ' + p.achternaam, werkelijk, streefaantal, percentage };
+      const percentage = streefaantalYtd > 0 ? Math.round((Math.min(werkelijk, streefaantalYtd) / streefaantalYtd) * 100) : 100;
+      totaalTeller += Math.min(werkelijk, streefaantalYtd);
+      totaalNoemer += streefaantalYtd;
+      return { personeelsnummer: p.personeelsnummer || '—', naam: p.voornaam + ' ' + p.achternaam, werkelijk, streefaantal: streefaantalYtd, percentage };
     }).sort((a,b) => a.percentage - b.percentage);
 
-    return { percentage: totaalNoemer ? Math.round((totaalTeller/totaalNoemer)*100) : 0, teller: totaalTeller, noemer: totaalNoemer, detail };
+    return { percentage: totaalNoemer ? Math.round((totaalTeller/totaalNoemer)*100) : 0, teller: Math.round(totaalTeller), noemer: Math.round(totaalNoemer), detail };
   }
 
   async function berekenToolboxen(){
@@ -348,7 +375,7 @@
         ${(data.detail||[]).map(r => `
           <div class="stat-rij">
             <span><b>${r.personeelsnummer}</b> ${r.naam !== '—' ? '· ' + r.naam : ''}</span>
-            <span class="stat-getal ${r.percentage<50?'rood':''}">${r.statusLabel || (r.werkelijk + '/' + r.streefaantal)} ${r.statusLabel?'':`(${r.percentage}%)`}</span>
+            <span class="stat-getal ${r.percentage<50?'rood':''}">${r.statusLabel || (r.werkelijk + '/' + (Math.round(r.streefaantal*10)/10))} ${r.statusLabel?'':`(${r.percentage}%)`}</span>
           </div>
         `).join('') || '<div class="meta">Geen gegevens.</div>'}
       </div>
