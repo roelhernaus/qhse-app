@@ -287,7 +287,8 @@
   }
 
   async function markeerAfgehandeld(id){
-    const { error } = await supabaseClient.from('stof_aanvragen').update({ status: 'afgehandeld' }).eq('id', id);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
+    const { error } = await supabaseClient.from('stof_aanvragen').update({ status: 'afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', id);
     if(error){ alert('Afhandelen mislukt: ' + error.message); return; }
     await render();
   }

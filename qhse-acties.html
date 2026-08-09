@@ -190,9 +190,11 @@
   }
 
   async function voerActieUit(type, id){
-    if(type === 'melding') await supabaseClient.from('meldingen').update({ status: 'Afgehandeld' }).eq('id', id);
-    else if(type === 'shift') await supabaseClient.from('logboek_regels').update({ afgerond: true }).eq('id', id);
-    else if(type === 'vergadering') await supabaseClient.from('logboek_acties').update({ afgerond: true }).eq('id', id);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
+    const notitieVeld = { afhandel_notitie: afhandel_notitie || null };
+    if(type === 'melding') await supabaseClient.from('meldingen').update({ status: 'Afgehandeld', ...notitieVeld }).eq('id', id);
+    else if(type === 'shift') await supabaseClient.from('logboek_regels').update({ afgerond: true, ...notitieVeld }).eq('id', id);
+    else if(type === 'vergadering') await supabaseClient.from('logboek_acties').update({ afgerond: true, ...notitieVeld }).eq('id', id);
     await render();
   }
 

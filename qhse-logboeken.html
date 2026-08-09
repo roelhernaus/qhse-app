@@ -328,12 +328,14 @@
   }
 
   async function rondActieAf(regelId){
-    const { error } = await supabaseClient.from('logboek_regels').update({ afgerond: true }).eq('id', regelId);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
+    const { error } = await supabaseClient.from('logboek_regels').update({ afgerond: true, afhandel_notitie: afhandel_notitie || null }).eq('id', regelId);
     if(error){ alert('Mislukt: ' + error.message); return; }
     await render();
   }
   async function rondLogboekActieAf(actieId){
-    const { error } = await supabaseClient.from('logboek_acties').update({ afgerond: true }).eq('id', actieId);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
+    const { error } = await supabaseClient.from('logboek_acties').update({ afgerond: true, afhandel_notitie: afhandel_notitie || null }).eq('id', actieId);
     if(error){ alert('Mislukt: ' + error.message); return; }
     await render();
   }

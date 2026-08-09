@@ -242,7 +242,10 @@
         <div class="meta" style="margin-top:6px">Keurmeester: ${k.profielen ? k.profielen.voornaam + ' ' + k.profielen.achternaam : '—'}</div>
         ${k.reden ? `<div class="meta">Reden: ${k.reden}</div>` : ''}
         ${k.volgende_keuring ? `<div class="meta">Volgende keuring: ${new Date(k.volgende_keuring).toLocaleDateString('nl-NL')}</div>` : ''}
-        ${k.rapport_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkRapport('${k.rapport_pad}')">📄 Rapport bekijken</button>` : `<div class="meta" style="margin-top:8px; color:var(--red)">Geen rapport gekoppeld</div>`}
+        <div class="row" style="margin-top:8px">
+          ${k.rapport_pad ? `<button class="ghost" onclick="bekijkRapport('${k.rapport_pad}')">📄 Rapport bekijken</button>` : `<span class="meta" style="color:var(--red)">Geen rapport gekoppeld</span>`}
+          <button class="ghost" onclick="verwijderKeuring('${k.id}')">Verwijderen</button>
+        </div>
       </div>`).join('') || '<div class="meta">Nog geen keuringen vastgelegd.</div>';
 
     const magVastleggen = ['admin','kam'].includes(huidigProfiel.rol)
@@ -293,7 +296,7 @@
           <option value="gehuurd" ${m.herkomst==='gehuurd'?'selected':''}>Gehuurd</option>
         </select>
         <div class="row" style="margin-top:14px">
-          <span></span>
+          <button class="ghost" onclick="verwijderMiddel()">Arbeidsmiddel verwijderen</button>
           <button class="primary" onclick="opslaanMiddel()">Opslaan</button>
         </div>
         <div class="fout verborgen" id="bewMiddelFout"></div>
@@ -319,6 +322,20 @@
     const { error } = await supabaseClient.from('arbeidsmiddelen').update({ uniek_id, type, categorie, herkomst }).eq('id', actiefId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+    await render();
+  }
+
+  async function verwijderMiddel(){
+    if(!confirm('Dit arbeidsmiddel, inclusief de volledige keuringsgeschiedenis, definitief verwijderen? Dit wordt vastgelegd in de audittrail.')) return;
+    const { error } = await supabaseClient.from('arbeidsmiddelen').delete().eq('id', actiefId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    actiefId = null; scherm = 'lijst'; await render();
+  }
+
+  async function verwijderKeuring(keuringId){
+    if(!confirm('Deze keuring definitief verwijderen? Dit wordt vastgelegd in de audittrail.')) return;
+    const { error } = await supabaseClient.from('keuringen').delete().eq('id', keuringId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await render();
   }
 
@@ -418,13 +435,15 @@
       organisatie_id: huidigProfiel.organisatie_id, uniek_id: uniekId, type: type || merk || 'Onbekend type'
     });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
-    await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld' }).eq('id', aanvraagId);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
+    await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', aanvraagId);
     scherm = 'lijst';
     await render();
   }
 
   async function verwerkAanvraag(id){
-    const { error } = await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld' }).eq('id', id);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel) — bijv. reden van afwijzing:');
+    const { error } = await supabaseClient.from('arbeidsmiddel_aanvragen').update({ status: 'afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', id);
     if(error){ alert('Mislukt: ' + error.message); return; }
     scherm = 'lijst';
     await render();

@@ -208,7 +208,8 @@
     await ververs();
   }
   async function markeerAfgehandeld(id){
-    const { error } = await supabaseClient.from('meldingen').update({ status: 'Afgehandeld' }).eq('id', id);
+    const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel) — bijv. hoe dit is opgevolgd:');
+    const { error } = await supabaseClient.from('meldingen').update({ status: 'Afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', id);
     if(error){ alert('Afhandelen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
