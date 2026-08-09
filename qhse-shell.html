@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE-systeem — Bouwbedrijf Van der Berg</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --bg-card:#ffffff; --border:#e2e3df; --text-primary:#1c1d1b; --text-secondary:#5a5c57; --text-tertiary:#9a9c96;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10);
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-primary); height:100vh; overflow:hidden; }
+  .font-display{ font-family:'Oswald',sans-serif; }
+
+  /* ---- login ---- */
+  #loginScherm{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .login-box{ width:100%; max-width:380px; }
+  .login-brand{ display:flex; align-items:center; gap:12px; margin-bottom:26px; }
+  .login-brand .logo{ width:42px; height:42px; border-radius:10px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Oswald',sans-serif; font-weight:700; font-size:15px; }
+  .login-brand .naam{ font-family:'Oswald',sans-serif; font-weight:600; font-size:17px; }
+  .login-brand .sub{ font-size:11.5px; color:var(--text-secondary); }
+  .card{ background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:22px; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .fout{ background:#fbeae8; color:#c0392b; font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .verborgen{ display:none; }
+
+  /* ---- shell ---- */
+  #appShell{ display:none; height:100vh; }
+  #rail{
+    width:190px; flex-shrink:0; background:#1c1d1b; color:#fff; height:100vh; overflow-y:auto;
+    display:flex; flex-direction:column; padding:16px 0;
+  }
+  .rail-brand{ padding:0 18px 16px; font-family:'Oswald',sans-serif; font-weight:600; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:10px; }
+  .rail-groep{ font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:rgba(255,255,255,0.4); padding:14px 18px 6px; }
+  .rail-item{
+    display:flex; align-items:center; gap:10px; padding:9px 18px; font-size:13px; cursor:pointer; color:rgba(255,255,255,0.75);
+    border-left:3px solid transparent;
+  }
+  .rail-item:hover{ background:rgba(255,255,255,0.06); }
+  .rail-item.actief{ background:rgba(255,255,255,0.08); color:#fff; border-left-color:var(--accent); }
+  #hoofdgebied{ flex:1; display:flex; flex-direction:column; height:100vh; }
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between; padding:10px 18px;
+    background:#fff; border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  #topbar .whoami{ font-size:12.5px; color:var(--text-secondary); }
+  #topbar .whoami b{ color:var(--text-primary); }
+  #frameGebied{ flex:1; position:relative; }
+  #frameGebied iframe{ position:absolute; inset:0; width:100%; height:100%; border:none; }
+  #appShell.actief{ display:flex; }
+</style>
+</head>
+<body>
+
+<div id="loginScherm">
+  <div class="login-box">
+    <div class="login-brand">
+      <div class="logo">AV</div>
+      <div>
+        <div class="naam font-display">Bouwbedrijf Van der Berg B.V.</div>
+        <div class="sub">QHSE-systeem</div>
+      </div>
+    </div>
+    <div class="card">
+      <label>E-mailadres</label>
+      <input type="email" id="loginEmail">
+      <label>Wachtwoord</label>
+      <input type="password" id="loginWachtwoord">
+      <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+      <div class="fout verborgen" id="loginFout"></div>
+    </div>
+  </div>
+</div>
+
+<div id="appShell">
+  <nav id="rail">
+    <div class="rail-brand">AV · QHSE-systeem</div>
+
+    <div class="rail-groep">Voor jou</div>
+    <div class="rail-item" data-pagina="qhse-acties.html" onclick="ga(this)">📥 Mijn Acties</div>
+    <div class="rail-item" data-pagina="qhse-meldingen.html" onclick="ga(this)">🚩 Meldingen</div>
+    <div class="rail-item" data-pagina="qhse-wpi.html" onclick="ga(this)">✅ WPI</div>
+    <div class="rail-item" data-pagina="qhse-mbb.html" onclick="ga(this)">👔 MBB</div>
+    <div class="rail-item" data-pagina="qhse-toolboxen.html" onclick="ga(this)">🧑‍🤝‍🧑 Toolboxen</div>
+    <div class="rail-item" data-pagina="qhse-opleidingen.html" onclick="ga(this)">🎓 Opleidingen</div>
+    <div class="rail-item" data-pagina="qhse-stoffen.html" onclick="ga(this)">🧪 Stoffen</div>
+    <div class="rail-item" data-pagina="qhse-keuringen.html" onclick="ga(this)">🔧 Keuringen</div>
+    <div class="rail-item" data-pagina="qhse-logboeken.html" onclick="ga(this)">📘 Logboeken</div>
+
+    <div class="rail-groep" id="beheerGroep" style="display:none">Beheer</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-personeel.html" onclick="ga(this)">👥 Personeel</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-toolboxen.html" onclick="ga(this)">🧑‍🤝‍🧑 Toolboxen</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-opleidingen.html" onclick="ga(this)">🎓 Opleidingen</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-stoffen.html" onclick="ga(this)">🧪 Stoffen</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-keuringen.html" onclick="ga(this)">🔧 Keuringen</div>
+    <div class="rail-item beheer-item" style="display:none" data-pagina="qhse-beheer-logboeken.html" onclick="ga(this)">📘 Logboeken</div>
+  </nav>
+
+  <div id="hoofdgebied">
+    <div id="topbar">
+      <span class="whoami"><b id="wieBenIk">—</b></span>
+      <button onclick="uitloggen()">Uitloggen</button>
+    </div>
+    <div id="frameGebied">
+      <iframe id="hoofdFrame" src=""></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initShell();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('appShell').classList.remove('actief');
+    document.getElementById('loginScherm').classList.remove('verborgen');
+  }
+
+  async function initShell(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('voornaam, achternaam, rol').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('loginScherm').classList.add('verborgen');
+    document.getElementById('appShell').classList.add('actief');
+
+    if(['admin','kam'].includes(profiel.rol)){
+      document.getElementById('beheerGroep').style.display = 'block';
+      document.querySelectorAll('.beheer-item').forEach(el => el.style.display = 'flex');
+    }
+
+    // Start op Mijn Acties
+    const eersteItem = document.querySelector('.rail-item[data-pagina="qhse-acties.html"]');
+    ga(eersteItem);
+  }
+
+  function ga(el){
+    document.querySelectorAll('.rail-item').forEach(i => i.classList.remove('actief'));
+    el.classList.add('actief');
+    document.getElementById('hoofdFrame').src = el.dataset.pagina;
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initShell();
+    });
+  }
+</script>
+</body>
+</html>
