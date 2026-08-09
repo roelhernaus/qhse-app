@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Instellingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:680px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:14px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  .rol-rij{ padding:10px 0; border-bottom:1px solid var(--border); }
+  .rol-rij:last-child{ border-bottom:none; }
+  .rol-naam{ font-weight:600; font-size:13.5px; }
+  .rol-uitleg{ font-size:12.5px; color:var(--text-soft); margin-top:2px; }
+  .rol-vergrendeld{ font-size:11px; color:var(--text-soft); background:#eee; padding:2px 8px; border-radius:10px; }
+  .callout{ background:var(--amber-dim); color:var(--amber); font-size:12.5px; padding:12px 14px; border-radius:8px; margin-bottom:16px; line-height:1.5; }
+  #logoPreview{ width:60px; height:60px; border-radius:10px; object-fit:cover; border:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit scherm is alleen voor Admin.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>Instellingen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+
+  <div class="eyebrow" style="margin-top:0">Huisstijl</div>
+  <div class="card">
+    <label style="margin-top:0">Bedrijfsnaam</label>
+    <input type="text" id="bedrijfsnaam">
+    <label>Naam van de app</label>
+    <input type="text" id="appNaam" placeholder="Bijv. 'AppVoorVeiligheid' of een eigen naam">
+    <label>Logo</label>
+    <div class="row">
+      <img id="logoPreview" src="" style="display:none">
+      <label class="ghost" style="display:inline-block; padding:8px 13px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
+        Logo uploaden
+        <input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">
+      </label>
+    </div>
+    <div class="meta" id="logoStatus" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:16px">
+      <span></span>
+      <button class="primary" onclick="opslaanHuisstijl()">Opslaan</button>
+    </div>
+    <div class="fout verborgen" id="huisstijlFout"></div>
+    <div class="melding verborgen" id="huisstijlMelding"></div>
+  </div>
+
+  <div class="eyebrow">Rollen &amp; rechten</div>
+  <div class="callout">
+    Nieuwe, zelf te bedenken rollen aanmaken kan nog niet — de rollen hieronder zijn vast verankerd in de beveiligingsregels van elke module. Dat volledig aanpasbaar maken is een grotere ingreep die we apart kunnen oppakken als je dat wilt.
+  </div>
+  <div class="card">
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">Admin</span><span class="rol-vergrendeld">Altijd volledige toegang</span></div>
+      <div class="rol-uitleg">Ziet en beheert alles binnen de organisatie, in elke module.</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">KAM</span></div>
+      <div class="rol-uitleg">Beheert Meldingen, WPI/MBB-formulieren, Toolboxen, Opleidingen, Stoffen, Keuringen en Logboeken. Ziet organisatiebreed overzicht.</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">HR</span></div>
+      <div class="rol-uitleg">Beheert Personeel (profielen, rollen, in-dienst-status).</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">Keurmeester</span></div>
+      <div class="rol-uitleg">Mag keuringen vastleggen en het keuringenregister beheren.</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">Leidinggevende</span></div>
+      <div class="rol-uitleg">Ziet MBB (als lid van de groep Management). Verder gelijk aan Medewerker.</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">Beheerder kantoor</span></div>
+      <div class="rol-uitleg">Gereserveerd voor toekomstig gebruik.</div>
+    </div>
+    <div class="rol-rij">
+      <div class="row"><span class="rol-naam">Medewerker</span></div>
+      <div class="rol-uitleg">Basistoegang: kan formulieren invullen, meldingen doen, opleidingen volgen, etc. — voor zichzelf.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let huidigeOrganisatie = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+
+    if(profiel.rol !== 'admin'){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+
+    const { data: org, error: orgFout } = await supabaseClient
+      .from('organisaties').select('*').eq('id', profiel.organisatie_id).single();
+    if(orgFout){ alert('Kon organisatie niet laden: ' + orgFout.message); return; }
+    huidigeOrganisatie = org;
+    document.getElementById('bedrijfsnaam').value = org.naam || '';
+    document.getElementById('appNaam').value = org.app_naam || '';
+    if(org.logo_pad){
+      const { data } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(org.logo_pad, 300);
+      if(data){
+        document.getElementById('logoPreview').src = data.signedUrl;
+        document.getElementById('logoPreview').style.display = 'block';
+      }
+    }
+  }
+
+  async function opslaanHuisstijl(){
+    const naam = document.getElementById('bedrijfsnaam').value.trim();
+    const app_naam = document.getElementById('appNaam').value.trim() || null;
+    const foutEl = document.getElementById('huisstijlFout');
+    const meldingEl = document.getElementById('huisstijlMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Bedrijfsnaam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { error } = await supabaseClient.from('organisaties').update({ naam, app_naam }).eq('id', huidigeOrganisatie.id);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function uploadLogo(inputEl){
+    const file = inputEl.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('logoStatus');
+    statusEl.textContent = 'Uploaden…';
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const pad = `${huidigProfiel.organisatie_id}/logo-${Date.now()}.${ext}`;
+    const { error: uploadFout } = await supabaseClient.storage.from('organisatie-branding').upload(pad, file);
+    if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
+    const { error: updateFout } = await supabaseClient.from('organisaties').update({ logo_pad: pad }).eq('id', huidigeOrganisatie.id);
+    if(updateFout){ statusEl.textContent = 'Koppelen mislukt: ' + updateFout.message; return; }
+
+    const { data } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(pad, 300);
+    if(data){
+      document.getElementById('logoPreview').src = data.signedUrl;
+      document.getElementById('logoPreview').style.display = 'block';
+    }
+    statusEl.textContent = '✓ Logo geüpload.';
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>
