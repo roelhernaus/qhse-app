@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Compliance</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:980px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.ghost{ background:transparent; }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:0 0 5px; }
+  input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+  .donut-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px; margin-bottom:24px; }
+  .donut-kaart{ text-align:center; }
+  .donut-titel{ font-family:'Oswald',sans-serif; font-weight:600; font-size:14px; margin-top:10px; }
+  .donut-sub{ font-size:12px; color:var(--text-soft); margin-top:2px; }
+  .stat-rij{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .stat-rij:last-child{ border-bottom:none; }
+  .stat-getal{ font-weight:600; }
+  .stat-getal.rood{ color:var(--red); }
+  .laden{ text-align:center; padding:60px 0; color:var(--text-soft); font-size:13px; }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit dashboard is alleen voor Admin of KAM.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>Compliance</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"><div class="laden">Cijfers worden berekend…</div></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!['admin','kam'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  function donutSvg(percentage, kleur){
+    const p = Math.max(0, Math.min(100, percentage||0));
+    const omtrek = 2 * Math.PI * 40;
+    const gevuld = (p/100) * omtrek;
+    return `<svg viewBox="0 0 100 100" width="110" height="110">
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#eee" stroke-width="11"/>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="${kleur}" stroke-width="11" stroke-dasharray="${gevuld} ${omtrek}" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+      <text x="50" y="57" text-anchor="middle" font-size="22" font-weight="700" font-family="Oswald" fill="${kleur}">${p}%</text>
+    </svg>`;
+  }
+  function kleurVoor(p){ return p >= 80 ? 'var(--green)' : (p >= 50 ? 'var(--amber)' : 'var(--red)'); }
+
+  async function iedereenInDienst(){
+    const { data } = await supabaseClient.from('profielen').select('id').eq('in_dienst', true);
+    return (data||[]).map(p=>p.id);
+  }
+  async function ledenVanGroep(groepId){
+    const { data } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', groepId);
+    return (data||[]).map(l=>l.profiel_id);
+  }
+  async function toegewezenIds(koppelingType, koppelingGroepId){
+    if(koppelingType === 'iedereen') return await iedereenInDienst();
+    if(koppelingGroepId) return await ledenVanGroep(koppelingGroepId);
+    return [];
+  }
+
+  async function berekenWpiMbb(soort){
+    let ids;
+    if(soort === 'mbb'){
+      const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
+      if(!mgmtGroep) return { percentage:0, teller:0, noemer:0 };
+      ids = await ledenVanGroep(mgmtGroep.id);
+    } else {
+      ids = await iedereenInDienst();
+    }
+    const noemer = ids.length;
+    if(!noemer) return { percentage:0, teller:0, noemer:0 };
+
+    const drieMaandenGeleden = new Date(); drieMaandenGeleden.setDate(drieMaandenGeleden.getDate() - 90);
+    const { data: formulieren } = await supabaseClient.from('wpi_formulieren').select('id').eq('soort', soort);
+    const formulierIds = (formulieren||[]).map(f=>f.id);
+    if(!formulierIds.length) return { percentage:0, teller:0, noemer };
+
+    const { data: bezoeken } = await supabaseClient
+      .from('wpi_bezoeken').select('uitvoerder_id').in('formulier_id', formulierIds)
+      .eq('afgerond', true).gte('aangemaakt_op', drieMaandenGeleden.toISOString());
+    const uitvoerders = new Set((bezoeken||[]).map(b=>b.uitvoerder_id));
+    const teller = ids.filter(id => uitvoerders.has(id)).length;
+    return { percentage: Math.round((teller/noemer)*100), teller, noemer };
+  }
+
+  async function berekenToolboxen(){
+    const { data: verplichte } = await supabaseClient.from('toolbox_bibliotheek').select('*').eq('verplicht', true);
+    if(!verplichte || !verplichte.length) return { percentage:0, teller:0, noemer:0 };
+    let teller = 0, noemer = 0;
+    for(const tb of verplichte){
+      const ids = await toegewezenIds(tb.koppeling_type, tb.koppeling_groep_id);
+      if(!ids.length) continue;
+      const { data: sessies } = await supabaseClient.from('toolbox_sessies').select('id').eq('toolbox_id', tb.id);
+      const sessieIds = (sessies||[]).map(s=>s.id);
+      let deelnemerIds = new Set();
+      if(sessieIds.length){
+        const { data: deelnemers } = await supabaseClient.from('toolbox_deelnemers').select('profiel_id').in('sessie_id', sessieIds);
+        (deelnemers||[]).forEach(d => { if(d.profiel_id) deelnemerIds.add(d.profiel_id); });
+      }
+      teller += ids.filter(id => deelnemerIds.has(id)).length;
+      noemer += ids.length;
+    }
+    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer };
+  }
+
+  async function berekenOpleidingen(){
+    const { data: opleidingen } = await supabaseClient.from('opleidingen').select('*');
+    if(!opleidingen || !opleidingen.length) return { percentage:0, teller:0, noemer:0 };
+    let teller = 0, noemer = 0;
+    for(const o of opleidingen){
+      const ids = await toegewezenIds(o.koppeling_type, o.koppeling_groep_id);
+      if(!ids.length) continue;
+      const { data: actieveVersie } = await supabaseClient.from('opleiding_versies').select('id').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
+      if(!actieveVersie) continue;
+      const { data: geslaagd } = await supabaseClient.from('opleiding_pogingen').select('profiel_id').eq('versie_id', actieveVersie.id).eq('geslaagd', true).in('profiel_id', ids);
+      const geslaagdeIds = new Set((geslaagd||[]).map(g=>g.profiel_id));
+      teller += geslaagdeIds.size;
+      noemer += ids.length;
+    }
+    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer };
+  }
+
+  async function berekenKeuringen(){
+    const { data: middelen } = await supabaseClient.from('arbeidsmiddelen').select('id');
+    if(!middelen || !middelen.length) return { percentage:0, teller:0, noemer:0 };
+    let teller = 0;
+    for(const m of middelen){
+      const { data: laatste } = await supabaseClient.from('keuringen').select('*').eq('arbeidsmiddel_id', m.id).order('datum', { ascending:false }).limit(1).maybeSingle();
+      if(laatste && laatste.resultaat === 'goedgekeurd' && (!laatste.volgende_keuring || new Date(laatste.volgende_keuring) >= new Date())) teller++;
+    }
+    return { percentage: Math.round((teller/middelen.length)*100), teller, noemer: middelen.length };
+  }
+
+  async function berekenActies(){
+    const { data: meldingen } = await supabaseClient.from('meldingen').select('status');
+    const openMeldingen = (meldingen||[]).filter(m=>m.status!=='Afgehandeld').length;
+
+    const { data: logboekActies } = await supabaseClient.from('logboek_acties').select('deadline, afgerond');
+    const openActies = (logboekActies||[]).filter(a=>!a.afgerond);
+    const verlopenActies = openActies.filter(a=>a.deadline && new Date(a.deadline) < new Date()).length;
+
+    const { data: stofAanvragen } = await supabaseClient.from('stof_aanvragen').select('status');
+    const openStofAanvragen = (stofAanvragen||[]).filter(a=>a.status!=='afgehandeld').length;
+
+    const { data: middelAanvragen } = await supabaseClient.from('arbeidsmiddel_aanvragen').select('status');
+    const openMiddelAanvragen = (middelAanvragen||[]).filter(a=>a.status!=='afgehandeld').length;
+
+    return { openMeldingen, openActies: openActies.length, verlopenActies, openStofAanvragen, openMiddelAanvragen };
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    const [wpi, mbb, toolboxen, opleidingen, keuringen, acties] = await Promise.all([
+      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies()
+    ]);
+
+    const donuts = [
+      { titel:'WPI', sub:`${wpi.teller}/${wpi.noemer} medewerkers actief (90 dgn)`, data:wpi },
+      { titel:'MBB', sub:`${mbb.teller}/${mbb.noemer} management actief (90 dgn)`, data:mbb },
+      { titel:'Toolboxen', sub:`${toolboxen.teller}/${toolboxen.noemer} verplichte deelnames`, data:toolboxen },
+      { titel:'Opleidingen', sub:`${opleidingen.teller}/${opleidingen.noemer} behaald`, data:opleidingen },
+      { titel:'Keuringen', sub:`${keuringen.teller}/${keuringen.noemer} arbeidsmiddelen geldig`, data:keuringen },
+    ];
+
+    inhoud.innerHTML = `
+      <div class="donut-grid">
+        ${donuts.map(d => `
+          <div class="card donut-kaart">
+            ${donutSvg(d.data.percentage, kleurVoor(d.data.percentage))}
+            <div class="donut-titel">${d.titel}</div>
+            <div class="donut-sub">${d.sub}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="eyebrow">Openstaande acties &amp; meldingen</div>
+      <div class="card">
+        <div class="stat-rij"><span>Openstaande meldingen</span><span class="stat-getal">${acties.openMeldingen}</span></div>
+        <div class="stat-rij"><span>Openstaande acties (logboeken)</span><span class="stat-getal">${acties.openActies}</span></div>
+        <div class="stat-rij"><span>Waarvan over de deadline</span><span class="stat-getal ${acties.verlopenActies>0?'rood':''}">${acties.verlopenActies}</span></div>
+        <div class="stat-rij"><span>Openstaande aanvragen gevaarlijke stoffen</span><span class="stat-getal">${acties.openStofAanvragen}</span></div>
+        <div class="stat-rij"><span>Openstaande aanvragen arbeidsmiddelen</span><span class="stat-getal">${acties.openMiddelAanvragen}</span></div>
+      </div>
+    `;
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>
