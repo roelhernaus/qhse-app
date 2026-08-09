@@ -134,13 +134,14 @@
   }
 
   async function renderLijst(){
-    const { data: opleidingen, error } = await supabaseClient.from('opleidingen').select('*').order('naam');
+    const { data: opleidingen, error } = await supabaseClient.from('opleidingen').select('*, opleiding_soorten(naam, is_alert)').order('naam');
     if(error) return '<div class="fout">Kon opleidingen niet laden: ' + error.message + '</div>';
 
     const rows = await Promise.all((opleidingen||[]).map(async (o) => {
       const { data: versie } = await supabaseClient
         .from('opleiding_versies').select('*').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
-      if(!versie) return `<div class="card"><b>${o.naam}</b><div class="meta" style="margin-top:6px">Nog geen actieve versie.</div></div>`;
+      const soortBadge = o.opleiding_soorten ? `<span class="tag" style="margin-left:6px; ${o.opleiding_soorten.is_alert ? 'background:var(--red-dim); color:var(--red);' : ''}">${o.opleiding_soorten.is_alert ? '⚠️ ' : ''}${o.opleiding_soorten.naam}</span>` : '';
+      if(!versie) return `<div class="card"><b>${o.naam}</b>${soortBadge}<div class="meta" style="margin-top:6px">Nog geen actieve versie.</div></div>`;
 
       const { data: laatstePoging } = await supabaseClient
         .from('opleiding_pogingen').select('*').eq('versie_id', versie.id).eq('profiel_id', huidigProfiel.id)
@@ -162,9 +163,9 @@
       }
 
       return `
-        <div class="card klikbaar" onclick="startOpleiding('${o.id}')">
+        <div class="card klikbaar" onclick="startOpleiding('${o.id}')" style="${o.opleiding_soorten && o.opleiding_soorten.is_alert ? 'border-color:var(--red);' : ''}">
           <div class="row">
-            <div><b>${o.naam}</b> <span class="meta">${o.code || ''}</span></div>
+            <div><b>${o.naam}</b> <span class="meta">${o.code || ''}</span>${soortBadge}</div>
             ${statusTag}
           </div>
           ${extraMeta ? `<div class="meta" style="margin-top:6px">${extraMeta}</div>` : ''}
@@ -206,11 +207,18 @@
       <div class="card">
         <b>${opleiding.naam}</b>
         <div class="meta" style="margin-top:6px">Versie ${versie.versienummer}</div>
+        ${opleiding.pdf_pad ? `<button class="ghost" style="margin-top:10px" onclick="bekijkMateriaal('${opleiding.pdf_pad}')">📄 Bekijk het lesmateriaal (PDF)</button>` : ''}
         <div class="meta" style="margin-top:14px"><b>Wat is er veranderd:</b></div>
         <div style="margin-top:4px; font-size:13.5px">${versie.wijzigingslog}</div>
         <button class="primary" id="verderKnop" style="width:100%; margin-top:20px" disabled onclick="scherm='quiz'; render();">Even lezen… (${WI_MIN_LEESTIJD}s)</button>
       </div>
     `;
+  }
+
+  async function bekijkMateriaal(pad){
+    const { data, error } = await supabaseClient.storage.from('opleiding-materiaal').createSignedUrl(pad, 300);
+    if(error){ alert('Kon materiaal niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
   }
 
   function beantwoord(vraagId, waarde){

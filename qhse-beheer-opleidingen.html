@@ -135,23 +135,65 @@
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
     else if(scherm === 'opleiding') inhoud.innerHTML = await renderOpleiding();
     else if(scherm === 'nieuweVersie') inhoud.innerHTML = renderNieuweVersie();
+    else if(scherm === 'soorten') inhoud.innerHTML = await renderSoorten();
+  }
+
+  async function renderSoorten(){
+    const { data: soorten, error } = await supabaseClient.from('opleiding_soorten').select('*').order('naam');
+    if(error) return '<div class="fout">Kon soorten niet laden: ' + error.message + '</div>';
+    const rows = (soorten||[]).map(s => `
+      <div class="card row">
+        <div>${s.naam} ${s.is_alert ? '<span class="tag" style="background:var(--red-dim); color:var(--red); margin-left:6px">⚠️ Alert</span>' : ''}</div>
+        <button class="ghost" onclick="verwijderSoort('${s.id}')">Verwijderen</button>
+      </div>`).join('') || '<div class="meta">Nog geen soorten.</div>';
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(soorten||[]).length} soorten</span>
+        <button class="primary" onclick="nieuweSoort()">+ Nieuwe soort</button>
+      </div>
+      <div class="meta" style="margin-bottom:12px">Het vinkje "Alert" zorgt dat opleidingen van dat type altijd rood/opvallend getoond worden en verplicht voor iedereen zijn (koppeling kan dan niet beperkt worden tot een groep).</div>
+      ${rows}
+    `;
+  }
+
+  async function nieuweSoort(){
+    const naam = prompt('Naam van de nieuwe soort:');
+    if(!naam) return;
+    const is_alert = confirm('Is dit een "Alert"-soort? (altijd rood, altijd verplicht voor iedereen)\\n\\nOK = ja, dit is een alert\\nAnnuleren = nee, gewone soort');
+    const { error } = await supabaseClient.from('opleiding_soorten').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, is_alert });
+    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderSoort(id){
+    if(!confirm('Deze soort verwijderen?')) return;
+    const { error } = await supabaseClient.from('opleiding_soorten').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
   }
 
   async function renderLijst(){
-    const { data: opleidingen, error } = await supabaseClient.from('opleidingen').select('*, groepen(naam)').order('naam');
+    const { data: opleidingen, error } = await supabaseClient.from('opleidingen').select('*, groepen(naam), opleiding_soorten(naam, is_alert)').order('naam');
     if(error) return '<div class="fout">Kon opleidingen niet laden: ' + error.message + '</div>';
     const rows = (opleidingen||[]).map(o => `
       <div class="card klikbaar" onclick="openOpleiding('${o.id}')">
         <div class="row">
-          <div><b>${o.naam}</b> <span class="meta">${o.code || ''}</span></div>
+          <div>
+            <b>${o.naam}</b> <span class="meta">${o.code || ''}</span>
+            ${o.opleiding_soorten ? `<span class="tag" style="margin-left:6px; ${o.opleiding_soorten.is_alert ? 'background:var(--red-dim); color:var(--red);' : ''}">${o.opleiding_soorten.is_alert ? '⚠️ ' : ''}${o.opleiding_soorten.naam}</span>` : ''}
+          </div>
           <span class="meta">${o.koppeling_type === 'iedereen' ? 'Iedereen' : (o.groepen ? o.groepen.naam : 'Groep')}</span>
         </div>
-        <div class="meta" style="margin-top:6px">Interval: ${o.interval_maanden} maanden</div>
+        <div class="meta" style="margin-top:6px">Interval: ${o.interval_maanden} maanden ${o.pdf_pad ? '· 📄 materiaal aanwezig' : '· <span style="color:var(--red)">geen materiaal</span>'}</div>
       </div>`).join('') || '<div class="meta">Nog geen opleidingen.</div>';
     return `
       <div class="row" style="margin-bottom:16px">
         <span class="meta">${(opleidingen||[]).length} opleidingen</span>
-        <button class="primary" onclick="nieuweOpleiding()">+ Nieuwe opleiding</button>
+        <div style="display:flex; gap:8px">
+          <button class="ghost" onclick="scherm='soorten'; render();">Soorten beheren</button>
+          <button class="primary" onclick="nieuweOpleiding()">+ Nieuwe opleiding</button>
+        </div>
       </div>
       ${rows}
     `;
@@ -179,6 +221,7 @@
     const { data: o, error } = await supabaseClient.from('opleidingen').select('*').eq('id', actiefId).single();
     if(error) return '<div class="fout">Kon opleiding niet laden: ' + error.message + '</div>';
     const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
+    const { data: soorten } = await supabaseClient.from('opleiding_soorten').select('*').order('naam');
     const { data: versies } = await supabaseClient
       .from('opleiding_versies').select('*').eq('opleiding_id', actiefId).order('versienummer', { ascending:false });
     const versieIds = (versies||[]).map(v=>v.id);
@@ -208,6 +251,9 @@
         <div class="meta" style="margin-top:4px">${new Date(p.afgerond_op).toLocaleString('nl-NL')}</div>
       </div>`).join('') || '<div class="meta">Nog geen pogingen.</div>';
 
+    const huidigeSoort = (soorten||[]).find(s => s.id === o.soort_id);
+    const isAlert = huidigeSoort ? huidigeSoort.is_alert : false;
+
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
@@ -215,17 +261,34 @@
         <input type="text" id="bewNaam" value="${o.naam}">
         <label>Code</label>
         <input type="text" id="bewCode" value="${o.code || ''}">
+        <label>Soort</label>
+        <select id="bewSoort" onchange="toggleAlertKoppeling()">
+          <option value="">— geen soort —</option>
+          ${(soorten||[]).map(s => `<option value="${s.id}" data-alert="${s.is_alert}" ${o.soort_id===s.id?'selected':''}>${s.naam}${s.is_alert?' (Alert)':''}</option>`).join('')}
+        </select>
         <label>Interval (maanden)</label>
         <input type="number" id="bewInterval" value="${o.interval_maanden}">
         <label>Toegewezen aan</label>
-        <select id="bewKoppelType">
-          <option value="iedereen" ${o.koppeling_type==='iedereen'?'selected':''}>Iedereen</option>
-          <option value="groep" ${o.koppeling_type==='groep'?'selected':''}>Specifieke groep</option>
+        <select id="bewKoppelType" ${isAlert?'disabled':''}>
+          <option value="iedereen" ${o.koppeling_type==='iedereen' || isAlert?'selected':''}>Iedereen</option>
+          <option value="groep" ${o.koppeling_type==='groep' && !isAlert?'selected':''}>Specifieke groep</option>
         </select>
-        <select id="bewGroep" style="margin-top:8px">
+        <select id="bewGroep" style="margin-top:8px" ${isAlert?'disabled':''}>
           <option value="">— kies een groep —</option>
           ${(groepen||[]).map(g => `<option value="${g.id}" ${o.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
         </select>
+        <div class="meta" id="alertUitleg" style="margin-top:4px; ${isAlert?'':'display:none'}">Een Alert is altijd voor iedereen — koppeling aan een specifieke groep is uitgeschakeld.</div>
+
+        <label>Opleidingsmateriaal (PDF, verplicht)</label>
+        <div class="row">
+          <span class="meta">${o.pdf_pad ? '📄 Materiaal gekoppeld' : '⚠️ Nog geen materiaal'}</span>
+          <label class="ghost" style="display:inline-block; padding:8px 13px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
+            ${o.pdf_pad ? 'Vervangen' : 'PDF toevoegen'}
+            <input type="file" accept="application/pdf" style="display:none" onchange="uploadOpleidingMateriaal(this)">
+          </label>
+        </div>
+        <div class="meta" id="materiaalStatus" style="margin-top:6px"></div>
+
         <div class="row" style="margin-top:16px">
           <button class="ghost" onclick="verwijderOpleiding()">Verwijderen</button>
           <button class="primary" onclick="opslaanOpleiding()">Opslaan</button>
@@ -243,9 +306,33 @@
     `;
   }
 
+  function toggleAlertKoppeling(){
+    const select = document.getElementById('bewSoort');
+    const optie = select.options[select.selectedIndex];
+    const isAlert = optie && optie.dataset.alert === 'true';
+    document.getElementById('bewKoppelType').disabled = isAlert;
+    document.getElementById('bewGroep').disabled = isAlert;
+    if(isAlert) document.getElementById('bewKoppelType').value = 'iedereen';
+    document.getElementById('alertUitleg').style.display = isAlert ? 'block' : 'none';
+  }
+
+  async function uploadOpleidingMateriaal(inputEl){
+    const file = inputEl.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('materiaalStatus');
+    statusEl.textContent = 'Uploaden…';
+    const pad = `${huidigProfiel.organisatie_id}/${actiefId}-${Date.now()}.pdf`;
+    const { error: uploadFout } = await supabaseClient.storage.from('opleiding-materiaal').upload(pad, file);
+    if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
+    const { error: updateFout } = await supabaseClient.from('opleidingen').update({ pdf_pad: pad }).eq('id', actiefId);
+    if(updateFout){ statusEl.textContent = 'Koppelen mislukt: ' + updateFout.message; return; }
+    await render();
+  }
+
   async function opslaanOpleiding(){
     const naam = document.getElementById('bewNaam').value.trim();
     const code = document.getElementById('bewCode').value.trim() || null;
+    const soort_id = document.getElementById('bewSoort').value || null;
     const interval_maanden = parseInt(document.getElementById('bewInterval').value) || 12;
     const koppeling_type = document.getElementById('bewKoppelType').value;
     const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bewGroep').value || null) : null;
@@ -253,7 +340,7 @@
     const meldingEl = document.getElementById('bewMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
     const { error } = await supabaseClient.from('opleidingen')
-      .update({ naam, code, interval_maanden, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
+      .update({ naam, code, soort_id, interval_maanden, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
     await render();
@@ -266,7 +353,12 @@
     actiefId = null; scherm = 'lijst'; await render();
   }
 
-  function nieuweVersie(){
+  async function nieuweVersie(){
+    const { data: o } = await supabaseClient.from('opleidingen').select('pdf_pad').eq('id', actiefId).single();
+    if(!o.pdf_pad){
+      alert('Voeg eerst opleidingsmateriaal (PDF) toe voordat je een versie kunt uitgeven.');
+      return;
+    }
     nieuweVragen = [
       { tekst:'', type:'ja/nee', juist:'ja', a:'', b:'', c:'', d:'' },
       { tekst:'', type:'ja/nee', juist:'ja', a:'', b:'', c:'', d:'' },
