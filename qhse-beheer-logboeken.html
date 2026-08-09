@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Beheer Logboeken</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .tab{ padding:7px 14px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .card.klikbaar{ cursor:pointer; }
+  .card.klikbaar:hover{ border-color:var(--accent); }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .chip{ display:inline-block; padding:6px 12px; border:1px solid var(--border); border-radius:20px; font-size:12.5px; cursor:pointer; margin:3px 4px 0 0; }
+  .chip.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit beheerscherm is alleen voor Admin of KAM.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>Logboeken</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let tabActief = 'logboeken'; // 'logboeken' | 'processen'
+  let scherm = 'lijst'; // 'lijst' | 'logboek'
+  let actiefId = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!['admin','kam'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  function setTab(t){ tabActief = t; scherm = 'lijst'; render(); }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    let tabsHtml = `
+      <div class="tabs">
+        <div class="tab ${tabActief==='logboeken'?'actief':''}" onclick="setTab('logboeken')">Logboeken</div>
+        <div class="tab ${tabActief==='processen'?'actief':''}" onclick="setTab('processen')">Processen</div>
+      </div>`;
+    let inhoudHtml = '';
+    if(scherm === 'logboek') inhoudHtml = await renderLogboek();
+    else if(tabActief === 'logboeken') inhoudHtml = await renderLogboeken();
+    else inhoudHtml = await renderProcessen();
+    inhoud.innerHTML = tabsHtml + inhoudHtml;
+  }
+
+  async function renderLogboeken(){
+    const { data: logboeken, error } = await supabaseClient.from('logboeken').select('*, groepen(naam)').order('naam');
+    if(error) return '<div class="fout">Kon logboeken niet laden: ' + error.message + '</div>';
+    const rows = (logboeken||[]).map(l => `
+      <div class="card klikbaar" onclick="openLogboek('${l.id}')">
+        <div class="row">
+          <div><b>${l.naam}</b> <span class="tag" style="margin-left:6px">${l.soort}</span></div>
+          <span class="meta">${l.koppeling_type==='iedereen' ? 'Iedereen' : (l.groepen ? l.groepen.naam : 'Groep')}</span>
+        </div>
+      </div>`).join('') || '<div class="meta">Nog geen logboeken.</div>';
+    return `
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(logboeken||[]).length} logboeken</span>
+        <button class="primary" onclick="nieuwLogboek()">+ Nieuw logboek</button>
+      </div>
+      ${rows}
+    `;
+  }
+
+  async function nieuwLogboek(){
+    const naam = prompt('Naam van het logboek:');
+    if(!naam) return;
+    const soort = confirm('Wordt dit een Vergaderingsnotule?\\n\\nOK = Vergaderingsnotule\\nAnnuleren = Shiftverloop') ? 'vergadernotule' : 'shiftverloop';
+    const { data, error } = await supabaseClient
+      .from('logboeken').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort, koppeling_type: 'iedereen' })
+      .select().single();
+    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    actiefId = data.id;
+    scherm = 'logboek';
+    await render();
+  }
+
+  async function openLogboek(id){
+    actiefId = id;
+    scherm = 'logboek';
+    await render();
+  }
+
+  async function renderLogboek(){
+    const { data: l, error } = await supabaseClient.from('logboeken').select('*').eq('id', actiefId).single();
+    if(error) return '<div class="fout">Kon logboek niet laden: ' + error.message + '</div>';
+    const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
+    const { data: alleProcessen } = await supabaseClient.from('processen').select('*').order('naam');
+    const { data: gekoppeldeProcessen } = await supabaseClient.from('logboek_processen').select('proces_id').eq('logboek_id', actiefId);
+    const gekoppeldeIds = new Set((gekoppeldeProcessen||[]).map(p=>p.proces_id));
+
+    const procesChips = l.soort === 'shiftverloop' ? `
+      <label>Processen die bij dit logboek horen</label>
+      ${(alleProcessen||[]).map(p => `<span class="chip ${gekoppeldeIds.has(p.id)?'actief':''}" onclick="toggleProces('${p.id}')">${p.naam}</span>`).join('')}
+    ` : '';
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="bewNaam" value="${l.naam}">
+        <div class="meta" style="margin-top:6px">Soort: ${l.soort} (kan niet meer gewijzigd worden)</div>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="bewVerwijderen" style="width:auto" ${l.verwijderen_toegestaan?'checked':''}> Regels mogen verwijderd worden
+        </label>
+        <label>Toegewezen aan</label>
+        <select id="bewKoppelType">
+          <option value="iedereen" ${l.koppeling_type==='iedereen'?'selected':''}>Iedereen</option>
+          <option value="groep" ${l.koppeling_type==='groep'?'selected':''}>Specifieke groep</option>
+        </select>
+        <select id="bewGroep" style="margin-top:8px">
+          <option value="">— kies een groep —</option>
+          ${(groepen||[]).map(g => `<option value="${g.id}" ${l.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
+        </select>
+        ${procesChips}
+        <div class="row" style="margin-top:18px">
+          <button class="ghost" onclick="verwijderLogboek()">Verwijderen</button>
+          <button class="primary" onclick="opslaanLogboek()">Opslaan</button>
+        </div>
+        <div class="fout verborgen" id="bewFout"></div>
+        <div class="melding verborgen" id="bewMelding"></div>
+      </div>
+    `;
+  }
+
+  function toggleProces(procesId){
+    const chip = event.target;
+    const actief = chip.classList.contains('actief');
+    if(actief){
+      supabaseClient.from('logboek_processen').delete().eq('logboek_id', actiefId).eq('proces_id', procesId).then(() => render());
+    } else {
+      supabaseClient.from('logboek_processen').insert({ logboek_id: actiefId, proces_id: procesId }).then(() => render());
+    }
+  }
+
+  async function opslaanLogboek(){
+    const naam = document.getElementById('bewNaam').value.trim();
+    const verwijderen_toegestaan = document.getElementById('bewVerwijderen').checked;
+    const koppeling_type = document.getElementById('bewKoppelType').value;
+    const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bewGroep').value || null) : null;
+    const foutEl = document.getElementById('bewFout');
+    const meldingEl = document.getElementById('bewMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('logboeken')
+      .update({ naam, verwijderen_toegestaan, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function verwijderLogboek(){
+    if(!confirm('Dit logboek, inclusief alle regels, definitief verwijderen?')) return;
+    const { error } = await supabaseClient.from('logboeken').delete().eq('id', actiefId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    actiefId = null; scherm = 'lijst'; await render();
+  }
+
+  async function renderProcessen(){
+    const { data: processen, error } = await supabaseClient.from('processen').select('*').order('naam');
+    if(error) return '<div class="fout">Kon processen niet laden: ' + error.message + '</div>';
+    const rows = (processen||[]).map(p => `
+      <div class="card row">
+        <div>${p.naam} ${p.is_actieproces ? '<span class="tag" style="margin-left:6px">Actieproces</span>' : ''}</div>
+        ${!p.is_actieproces ? `<button class="ghost" onclick="verwijderProces('${p.id}')">Verwijderen</button>` : ''}
+      </div>`).join('') || '<div class="meta">Nog geen processen.</div>';
+    return `
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(processen||[]).length} processen</span>
+        <button class="primary" onclick="nieuwProces()">+ Nieuw proces</button>
+      </div>
+      ${rows}
+    `;
+  }
+
+  async function nieuwProces(){
+    const naam = prompt('Naam van het nieuwe proces:');
+    if(!naam) return;
+    const { error } = await supabaseClient.from('processen').insert({ organisatie_id: huidigProfiel.organisatie_id, naam });
+    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderProces(id){
+    if(!confirm('Dit proces verwijderen?')) return;
+    const { error } = await supabaseClient.from('processen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>

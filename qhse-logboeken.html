@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Logboeken</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:680px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ghost{ background:transparent; }
+  input, select, textarea{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .card.klikbaar{ cursor:pointer; }
+  .card.klikbaar:hover{ border-color:var(--accent); }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .verborgen{ display:none; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .actie-item{ padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .actie-item:last-child{ border-bottom:none; }
+</style>
+</head>
+<body>
+
+<div id="login-scherm" class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem</div>
+      <h1>Logboeken</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'logboek'
+  let actiefId = null;
+  let nieuweActies = []; // voor vergadernotule-formulier: [{omschrijving, toegewezenAan, deadline}]
+  let alleProfielen = [];
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('in_dienst', true).order('achternaam');
+    alleProfielen = profielen || [];
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
+    else if(scherm === 'logboek') inhoud.innerHTML = await renderLogboek();
+  }
+
+  async function renderLijst(){
+    const { data: logboeken, error } = await supabaseClient.from('logboeken').select('*').order('naam');
+    if(error) return '<div class="fout">Kon logboeken niet laden: ' + error.message + '</div>';
+    const rows = (logboeken||[]).map(l => `
+      <div class="card klikbaar" onclick="openLogboek('${l.id}')">
+        <div class="row">
+          <b>${l.naam}</b>
+          <span class="tag">${l.soort === 'shiftverloop' ? 'Shiftverloop' : 'Vergaderingsnotule'}</span>
+        </div>
+      </div>`).join('') || '<div class="meta">Nog geen logboeken aan jou toegewezen.</div>';
+    return rows;
+  }
+
+  async function openLogboek(id){
+    actiefId = id;
+    scherm = 'logboek';
+    nieuweActies = [];
+    await render();
+  }
+
+  async function renderLogboek(){
+    const { data: l, error } = await supabaseClient.from('logboeken').select('*').eq('id', actiefId).single();
+    if(error) return '<div class="fout">Kon logboek niet laden: ' + error.message + '</div>';
+    const { data: regels, error: regelsFout } = await supabaseClient
+      .from('logboek_regels').select('*, profielen!logboek_regels_invuller_id_fkey(voornaam, achternaam), processen(naam)')
+      .eq('logboek_id', actiefId).order('tijdstip_invullen', { ascending:false });
+    if(regelsFout) return '<div class="fout">Kon regels niet laden: ' + regelsFout.message + '</div>';
+
+    const formulier = l.soort === 'shiftverloop' ? await renderShiftverloopFormulier() : renderVergadernotuleFormulier();
+    const regelsHtml = await Promise.all((regels||[]).map(r => renderRegelKaart(l, r)));
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug</button>
+      <div class="eyebrow" style="margin-top:0">${l.naam}</div>
+      ${formulier}
+      <div class="eyebrow" style="margin-top:22px">Regels</div>
+      ${regelsHtml.join('') || '<div class="meta">Nog geen regels ingevuld.</div>'}
+    `;
+  }
+
+  async function renderShiftverloopFormulier(){
+    const { data: processen } = await supabaseClient
+      .from('logboek_processen').select('processen(id, naam, is_actieproces)').eq('logboek_id', actiefId);
+    const opties = (processen||[]).map(p => p.processen).filter(Boolean);
+    return `
+      <div class="card">
+        <label style="margin-top:0">Tijdstip gebeurtenis</label>
+        <input type="text" id="svTijdstip" placeholder="Bijv. 14:30">
+        <label>Proces</label>
+        <select id="svProces" onchange="toggleActieVeld()">
+          <option value="">— kies een proces —</option>
+          ${opties.map(p => `<option value="${p.id}" data-actie="${p.is_actieproces}">${p.naam}</option>`).join('')}
+        </select>
+        <div id="svActieBlok" class="verborgen">
+          <label>Toegewezen aan</label>
+          <select id="svToegewezenAan">
+            <option value="">— kies een persoon —</option>
+            ${alleProfielen.map(p => `<option value="${p.id}">${p.voornaam} ${p.achternaam}</option>`).join('')}
+          </select>
+        </div>
+        <label>Boodschap</label>
+        <textarea rows="3" id="svBoodschap"></textarea>
+        <div class="row" style="margin-top:14px">
+          <span></span>
+          <button class="primary" onclick="opslaanShiftverloop()">Vastleggen</button>
+        </div>
+        <div class="fout verborgen" id="svFout"></div>
+      </div>
+    `;
+  }
+
+  function toggleActieVeld(){
+    const select = document.getElementById('svProces');
+    const optie = select.options[select.selectedIndex];
+    const isActie = optie && optie.dataset.actie === 'true';
+    document.getElementById('svActieBlok').classList.toggle('verborgen', !isActie);
+  }
+
+  async function opslaanShiftverloop(){
+    const tijdstip_gebeurtenis = document.getElementById('svTijdstip').value.trim() || null;
+    const proces_id = document.getElementById('svProces').value || null;
+    const toegewezen_aan = document.getElementById('svActieBlok').classList.contains('verborgen') ? null : (document.getElementById('svToegewezenAan').value || null);
+    const boodschap = document.getElementById('svBoodschap').value.trim();
+    const foutEl = document.getElementById('svFout');
+    foutEl.classList.add('verborgen');
+    if(!boodschap){ foutEl.textContent = 'Vul een boodschap in.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { error } = await supabaseClient.from('logboek_regels').insert({
+      logboek_id: actiefId, invuller_id: huidigProfiel.id, tijdstip_gebeurtenis, proces_id, toegewezen_aan, boodschap
+    });
+    if(error){ foutEl.textContent = 'Vastleggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await render();
+  }
+
+  function renderVergadernotuleFormulier(){
+    const actieRows = nieuweActies.map((a,i) => `
+      <div class="card" style="margin-top:8px">
+        <label style="margin-top:0">Omschrijving</label>
+        <input type="text" oninput="nieuweActies[${i}].omschrijving=this.value">
+        <label>Toegewezen aan</label>
+        <select onchange="nieuweActies[${i}].toegewezenAan=this.value">
+          <option value="">— kies een persoon —</option>
+          ${alleProfielen.map(p => `<option value="${p.id}">${p.voornaam} ${p.achternaam}</option>`).join('')}
+        </select>
+        <label>Deadline</label>
+        <input type="date" onchange="nieuweActies[${i}].deadline=this.value">
+        <button class="ghost" style="margin-top:10px" onclick="nieuweActies.splice(${i},1); render();">Verwijderen</button>
+      </div>
+    `).join('');
+
+    return `
+      <div class="card">
+        <label style="margin-top:0">Naam vergadering</label>
+        <input type="text" id="vnNaam">
+        <label>Aanwezigen</label>
+        <input type="text" id="vnAanwezigen">
+        <label>Afwezigen</label>
+        <input type="text" id="vnAfwezigen">
+        <label>Verloop</label>
+        <textarea rows="3" id="vnVerloop"></textarea>
+        <label>Afspraken</label>
+        <textarea rows="3" id="vnAfspraken"></textarea>
+
+        <div class="eyebrow" style="margin-top:16px">Acties uit deze vergadering</div>
+        ${actieRows}
+        <button class="ghost" style="margin-top:8px" onclick="nieuweActies.push({omschrijving:'',toegewezenAan:'',deadline:''}); render();">+ Actie toevoegen</button>
+
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanVergadernotule()">Vastleggen</button>
+        </div>
+        <div class="fout verborgen" id="vnFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanVergadernotule(){
+    const naam_vergadering = document.getElementById('vnNaam').value.trim();
+    const aanwezigen = document.getElementById('vnAanwezigen').value.trim() || null;
+    const afwezigen = document.getElementById('vnAfwezigen').value.trim() || null;
+    const verloop = document.getElementById('vnVerloop').value.trim() || null;
+    const afspraken = document.getElementById('vnAfspraken').value.trim() || null;
+    const foutEl = document.getElementById('vnFout');
+    foutEl.classList.add('verborgen');
+    if(!naam_vergadering){ foutEl.textContent = 'Vul een naam voor de vergadering in.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { data: regel, error } = await supabaseClient.from('logboek_regels').insert({
+      logboek_id: actiefId, invuller_id: huidigProfiel.id, naam_vergadering, aanwezigen, afwezigen, verloop, afspraken
+    }).select().single();
+    if(error){ foutEl.textContent = 'Vastleggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+
+    const geldigeActies = nieuweActies.filter(a => a.omschrijving && a.omschrijving.trim());
+    if(geldigeActies.length){
+      const rijen = geldigeActies.map(a => ({
+        regel_id: regel.id, omschrijving: a.omschrijving, toegewezen_aan: a.toegewezenAan || null, deadline: a.deadline || null
+      }));
+      const { error: actiesFout } = await supabaseClient.from('logboek_acties').insert(rijen);
+      if(actiesFout){ foutEl.textContent = 'Regel vastgelegd, maar acties opslaan mislukt: ' + actiesFout.message; foutEl.classList.remove('verborgen'); }
+    }
+    nieuweActies = [];
+    await render();
+  }
+
+  async function renderRegelKaart(logboek, r){
+    if(logboek.soort === 'shiftverloop'){
+      const vanMij = r.invuller_id === huidigProfiel.id;
+      return `
+        <div class="card">
+          <div class="row">
+            <span class="meta">${new Date(r.tijdstip_invullen).toLocaleString('nl-NL')}${r.tijdstip_gebeurtenis ? ' · gebeurtenis om ' + r.tijdstip_gebeurtenis : ''}</span>
+            ${r.processen ? `<span class="tag">${r.processen.naam}</span>` : ''}
+          </div>
+          <div style="font-size:13.5px; margin-top:8px">${r.boodschap || ''}</div>
+          <div class="meta" style="margin-top:6px">Door ${r.profielen ? r.profielen.voornaam + ' ' + r.profielen.achternaam : '—'}</div>
+          ${r.toegewezen_aan ? `<div class="row" style="margin-top:8px"><span class="meta">Actie toegewezen</span>${r.toegewezen_aan===huidigProfiel.id && !r.afgerond ? `<button class="ghost" onclick="rondActieAf('${r.id}')">Markeer afgerond</button>` : (r.afgerond ? '<span class="tag" style="background:var(--green-dim); color:var(--green);">Afgerond</span>' : '')}</div>` : ''}
+          ${logboek.verwijderen_toegestaan && vanMij ? `<button class="ghost" style="margin-top:8px" onclick="verwijderRegel('${r.id}')">Verwijderen</button>` : ''}
+        </div>`;
+    } else {
+      const { data: acties } = await supabaseClient
+        .from('logboek_acties').select('*, profielen(voornaam, achternaam)').eq('regel_id', r.id);
+      const actiesHtml = (acties||[]).map(a => `
+        <div class="actie-item">
+          <div class="row">
+            <span>${a.omschrijving}</span>
+            ${a.afgerond ? '<span class="tag" style="background:var(--green-dim); color:var(--green);">Afgerond</span>' : (a.toegewezen_aan===huidigProfiel.id ? `<button class="ghost" onclick="rondLogboekActieAf('${a.id}')">Afronden</button>` : '')}
+          </div>
+          <div class="meta" style="margin-top:3px">${a.profielen ? 'Toegewezen aan ' + a.profielen.voornaam + ' ' + a.profielen.achternaam : ''}${a.deadline ? ' · deadline ' + new Date(a.deadline).toLocaleDateString('nl-NL') : ''}</div>
+        </div>`).join('');
+      return `
+        <div class="card">
+          <b>${r.naam_vergadering}</b>
+          <div class="meta" style="margin-top:4px">${new Date(r.tijdstip_invullen).toLocaleString('nl-NL')} · door ${r.profielen ? r.profielen.voornaam + ' ' + r.profielen.achternaam : '—'}</div>
+          ${r.verloop ? `<div style="font-size:13px; margin-top:8px">${r.verloop}</div>` : ''}
+          ${actiesHtml ? `<div style="margin-top:10px">${actiesHtml}</div>` : ''}
+          ${logboek.verwijderen_toegestaan ? `<button class="ghost" style="margin-top:8px" onclick="verwijderRegel('${r.id}')">Verwijderen</button>` : ''}
+        </div>`;
+    }
+  }
+
+  async function rondActieAf(regelId){
+    const { error } = await supabaseClient.from('logboek_regels').update({ afgerond: true }).eq('id', regelId);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    await render();
+  }
+  async function rondLogboekActieAf(actieId){
+    const { error } = await supabaseClient.from('logboek_acties').update({ afgerond: true }).eq('id', actieId);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    await render();
+  }
+  async function verwijderRegel(id){
+    if(!confirm('Deze regel verwijderen?')) return;
+    const { error } = await supabaseClient.from('logboek_regels').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      if(session) initApp();
+    });
+  }
+</script>
+</body>
+</html>
