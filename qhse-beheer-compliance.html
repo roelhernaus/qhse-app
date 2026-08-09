@@ -192,7 +192,10 @@
     const { data: profielen } = await profielenQuery;
     if(!profielen || !profielen.length) return { percentage:0, teller:0, noemer:0, detail:[] };
 
-    const { data: formulieren } = await supabaseClient.from('wpi_formulieren').select('id').eq('soort', soort);
+    // MBB telt ook mee als WPI (een MBB-bezoek is een zwaardere vorm van werkplekinspectie),
+    // maar een gewone WPI telt niet mee als MBB.
+    const relevanteSoorten = soort === 'wpi' ? ['wpi','mbb'] : ['mbb'];
+    const { data: formulieren } = await supabaseClient.from('wpi_formulieren').select('id').in('soort', relevanteSoorten);
     const formulierIds = (formulieren||[]).map(f=>f.id);
 
     let bezoeken = [];
