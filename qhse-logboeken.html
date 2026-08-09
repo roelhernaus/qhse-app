@@ -137,6 +137,7 @@
     actiefId = id;
     scherm = 'logboek';
     nieuweActies = [];
+    vergaderData = { naam:'', aanwezigen:'', afwezigen:'', verloop:'', afspraken:'' };
     await render();
   }
 
@@ -214,18 +215,20 @@
     await render();
   }
 
+  let vergaderData = { naam:'', aanwezigen:'', afwezigen:'', verloop:'', afspraken:'' };
+
   function renderVergadernotuleFormulier(){
     const actieRows = nieuweActies.map((a,i) => `
       <div class="card" style="margin-top:8px">
         <label style="margin-top:0">Omschrijving</label>
-        <input type="text" oninput="nieuweActies[${i}].omschrijving=this.value">
+        <input type="text" value="${a.omschrijving}" oninput="nieuweActies[${i}].omschrijving=this.value">
         <label>Toegewezen aan</label>
         <select onchange="nieuweActies[${i}].toegewezenAan=this.value">
           <option value="">— kies een persoon —</option>
-          ${alleProfielen.map(p => `<option value="${p.id}">${p.voornaam} ${p.achternaam}</option>`).join('')}
+          ${alleProfielen.map(p => `<option value="${p.id}" ${a.toegewezenAan===p.id?'selected':''}>${p.voornaam} ${p.achternaam}</option>`).join('')}
         </select>
         <label>Deadline</label>
-        <input type="date" onchange="nieuweActies[${i}].deadline=this.value">
+        <input type="date" value="${a.deadline}" onchange="nieuweActies[${i}].deadline=this.value">
         <button class="ghost" style="margin-top:10px" onclick="nieuweActies.splice(${i},1); render();">Verwijderen</button>
       </div>
     `).join('');
@@ -233,15 +236,15 @@
     return `
       <div class="card">
         <label style="margin-top:0">Naam vergadering</label>
-        <input type="text" id="vnNaam">
+        <input type="text" id="vnNaam" value="${vergaderData.naam}" oninput="vergaderData.naam=this.value">
         <label>Aanwezigen</label>
-        <input type="text" id="vnAanwezigen">
+        <input type="text" id="vnAanwezigen" value="${vergaderData.aanwezigen}" oninput="vergaderData.aanwezigen=this.value">
         <label>Afwezigen</label>
-        <input type="text" id="vnAfwezigen">
+        <input type="text" id="vnAfwezigen" value="${vergaderData.afwezigen}" oninput="vergaderData.afwezigen=this.value">
         <label>Verloop</label>
-        <textarea rows="3" id="vnVerloop"></textarea>
+        <textarea rows="3" id="vnVerloop" oninput="vergaderData.verloop=this.value">${vergaderData.verloop}</textarea>
         <label>Afspraken</label>
-        <textarea rows="3" id="vnAfspraken"></textarea>
+        <textarea rows="3" id="vnAfspraken" oninput="vergaderData.afspraken=this.value">${vergaderData.afspraken}</textarea>
 
         <div class="eyebrow" style="margin-top:16px">Acties uit deze vergadering</div>
         ${actieRows}
@@ -257,11 +260,11 @@
   }
 
   async function opslaanVergadernotule(){
-    const naam_vergadering = document.getElementById('vnNaam').value.trim();
-    const aanwezigen = document.getElementById('vnAanwezigen').value.trim() || null;
-    const afwezigen = document.getElementById('vnAfwezigen').value.trim() || null;
-    const verloop = document.getElementById('vnVerloop').value.trim() || null;
-    const afspraken = document.getElementById('vnAfspraken').value.trim() || null;
+    const naam_vergadering = vergaderData.naam.trim();
+    const aanwezigen = vergaderData.aanwezigen.trim() || null;
+    const afwezigen = vergaderData.afwezigen.trim() || null;
+    const verloop = vergaderData.verloop.trim() || null;
+    const afspraken = vergaderData.afspraken.trim() || null;
     const foutEl = document.getElementById('vnFout');
     foutEl.classList.add('verborgen');
     if(!naam_vergadering){ foutEl.textContent = 'Vul een naam voor de vergadering in.'; foutEl.classList.remove('verborgen'); return; }
@@ -280,6 +283,7 @@
       if(actiesFout){ foutEl.textContent = 'Regel vastgelegd, maar acties opslaan mislukt: ' + actiesFout.message; foutEl.classList.remove('verborgen'); }
     }
     nieuweActies = [];
+    vergaderData = { naam:'', aanwezigen:'', afwezigen:'', verloop:'', afspraken:'' };
     await render();
   }
 
