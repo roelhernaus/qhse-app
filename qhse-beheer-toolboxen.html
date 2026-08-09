@@ -178,10 +178,13 @@
     await render();
   }
 
+  let bewGroepenCache = [];
+
   async function renderBewerken(){
     const { data: t, error } = await supabaseClient.from('toolbox_bibliotheek').select('*').eq('id', actiefId).single();
     if(error) return '<div class="fout">Kon toolbox niet laden: ' + error.message + '</div>';
     const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
+    bewGroepenCache = groepen || [];
     const { data: gekoppeldePersonen } = await supabaseClient.from('toolbox_bibliotheek_personen').select('profiel_id').eq('bibliotheek_id', actiefId);
     const gekoppeldeIds = new Set((gekoppeldePersonen||[]).map(p=>p.profiel_id));
     let ledenHtml = '';
@@ -205,17 +208,17 @@
         </label>
 
         <label>Toegewezen aan</label>
-        <select id="bewKoppelType" onchange="render()">
+        <select id="bewKoppelType" onchange="toggleKoppelType()">
           <option value="iedereen" ${t.koppeling_type==='iedereen'?'selected':''}>Iedereen</option>
           <option value="groep" ${t.koppeling_type==='groep'?'selected':''}>Specifieke groep</option>
         </select>
         <div id="koppelDetails" style="margin-top:10px">
           ${t.koppeling_type==='groep' ? `
-            <select id="bewGroep">
+            <select id="bewGroep" onchange="toonGroepLeden()">
               <option value="">— kies een groep —</option>
-              ${(groepen||[]).map(g => `<option value="${g.id}" ${t.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
+              ${bewGroepenCache.map(g => `<option value="${g.id}" ${t.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
             </select>
-            ${ledenHtml}
+            <div id="ledenBlok">${ledenHtml}</div>
           ` : ''}
         </div>
 
@@ -239,14 +242,42 @@
     `;
   }
 
+  function toggleKoppelType(){
+    const type = document.getElementById('bewKoppelType').value;
+    const detailsEl = document.getElementById('koppelDetails');
+    if(type === 'groep'){
+      detailsEl.innerHTML = `
+        <select id="bewGroep" onchange="toonGroepLeden()">
+          <option value="">— kies een groep —</option>
+          ${bewGroepenCache.map(g => `<option value="${g.id}">${g.naam}</option>`).join('')}
+        </select>
+        <div id="ledenBlok"></div>
+      `;
+    } else {
+      detailsEl.innerHTML = '';
+    }
+  }
+
+  async function toonGroepLeden(){
+    const groepId = document.getElementById('bewGroep').value;
+    const ledenBlok = document.getElementById('ledenBlok');
+    if(!groepId){ ledenBlok.innerHTML = ''; return; }
+    const { data: gekoppeldePersonen } = await supabaseClient.from('toolbox_bibliotheek_personen').select('profiel_id').eq('bibliotheek_id', actiefId);
+    const gekoppeldeIds = new Set((gekoppeldePersonen||[]).map(p=>p.profiel_id));
+    const { data: leden } = await supabaseClient.from('groep_leden').select('profielen(id, voornaam, achternaam)').eq('groep_id', groepId);
+    ledenBlok.innerHTML = `
+      <div class="meta" style="margin:10px 0 6px">Beperk optioneel tot specifieke personen binnen deze groep (niets aangevinkt = hele groep)</div>
+      ${(leden||[]).map(l => l.profielen ? `<span class="chip ${gekoppeldeIds.has(l.profielen.id)?'actief':''}" onclick="togglePersoon('${l.profielen.id}')">${l.profielen.voornaam} ${l.profielen.achternaam}</span>` : '').join('')}
+    `;
+  }
+
   function togglePersoon(profielId){
     const chip = event.target;
     const actief = chip.classList.contains('actief');
-    if(actief){
-      supabaseClient.from('toolbox_bibliotheek_personen').delete().eq('bibliotheek_id', actiefId).eq('profiel_id', profielId).then(() => render());
-    } else {
-      supabaseClient.from('toolbox_bibliotheek_personen').insert({ bibliotheek_id: actiefId, profiel_id: profielId }).then(() => render());
-    }
+    const bewerking = actief
+      ? supabaseClient.from('toolbox_bibliotheek_personen').delete().eq('bibliotheek_id', actiefId).eq('profiel_id', profielId)
+      : supabaseClient.from('toolbox_bibliotheek_personen').insert({ bibliotheek_id: actiefId, profiel_id: profielId });
+    bewerking.then(() => toonGroepLeden());
   }
 
   async function opslaan(){
