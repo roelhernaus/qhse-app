@@ -154,34 +154,49 @@
   }
 
   async function berekenWpiMbb(soort){
-    let ids;
+    const { data: org } = await supabaseClient.from('organisaties').select('*').eq('id', huidigProfiel.organisatie_id).single();
+    const standaardStreef = soort === 'wpi' ? (org.wpi_streefaantal_per_jaar ?? 12) : (org.mbb_streefaantal_per_jaar ?? 4);
+
+    let profielenQuery = supabaseClient.from('profielen').select('id, voornaam, achternaam, personeelsnummer, wpi_streefaantal_override, mbb_streefaantal_override').eq('in_dienst', true);
     if(soort === 'mbb'){
       const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
-      if(!mgmtGroep) return { percentage:0, teller:0, noemer:0 };
-      ids = await ledenVanGroep(mgmtGroep.id);
-    } else {
-      ids = await iedereenInDienst();
+      if(!mgmtGroep) return { percentage:0, teller:0, noemer:0, detail:[] };
+      const ids = await ledenVanGroep(mgmtGroep.id);
+      if(!ids.length) return { percentage:0, teller:0, noemer:0, detail:[] };
+      profielenQuery = profielenQuery.in('id', ids);
     }
-    const noemer = ids.length;
-    if(!noemer) return { percentage:0, teller:0, noemer:0 };
+    const { data: profielen } = await profielenQuery;
+    if(!profielen || !profielen.length) return { percentage:0, teller:0, noemer:0, detail:[] };
 
-    const drieMaandenGeleden = new Date(); drieMaandenGeleden.setDate(drieMaandenGeleden.getDate() - 90);
+    const jaarStart = new Date(new Date().getFullYear(), 0, 1);
     const { data: formulieren } = await supabaseClient.from('wpi_formulieren').select('id').eq('soort', soort);
     const formulierIds = (formulieren||[]).map(f=>f.id);
-    if(!formulierIds.length) return { percentage:0, teller:0, noemer };
 
-    const { data: bezoeken } = await supabaseClient
-      .from('wpi_bezoeken').select('uitvoerder_id').in('formulier_id', formulierIds)
-      .eq('afgerond', true).gte('aangemaakt_op', drieMaandenGeleden.toISOString());
-    const uitvoerders = new Set((bezoeken||[]).map(b=>b.uitvoerder_id));
-    const teller = ids.filter(id => uitvoerders.has(id)).length;
-    return { percentage: Math.round((teller/noemer)*100), teller, noemer };
+    let bezoeken = [];
+    if(formulierIds.length){
+      const { data } = await supabaseClient
+        .from('wpi_bezoeken').select('uitvoerder_id').in('formulier_id', formulierIds)
+        .eq('afgerond', true).gte('aangemaakt_op', jaarStart.toISOString());
+      bezoeken = data || [];
+    }
+
+    let totaalTeller = 0, totaalNoemer = 0;
+    const detail = profielen.map(p => {
+      const streefaantal = (soort === 'wpi' ? p.wpi_streefaantal_override : p.mbb_streefaantal_override) ?? standaardStreef;
+      const werkelijk = bezoeken.filter(b => b.uitvoerder_id === p.id).length;
+      const percentage = streefaantal > 0 ? Math.round((Math.min(werkelijk, streefaantal) / streefaantal) * 100) : 100;
+      totaalTeller += Math.min(werkelijk, streefaantal);
+      totaalNoemer += streefaantal;
+      return { personeelsnummer: p.personeelsnummer || '—', naam: p.voornaam + ' ' + p.achternaam, werkelijk, streefaantal, percentage };
+    }).sort((a,b) => a.percentage - b.percentage);
+
+    return { percentage: totaalNoemer ? Math.round((totaalTeller/totaalNoemer)*100) : 0, teller: totaalTeller, noemer: totaalNoemer, detail };
   }
 
   async function berekenToolboxen(){
     const { data: verplichte } = await supabaseClient.from('toolbox_bibliotheek').select('*').eq('verplicht', true);
-    if(!verplichte || !verplichte.length) return { percentage:0, teller:0, noemer:0 };
-    let teller = 0, noemer = 0;
+    if(!verplichte || !verplichte.length) return { percentage:0, teller:0, noemer:0, detail:[] };
+    const perPersoon = {}; // id -> { gedaan: n, verplicht: n }
     for(const tb of verplichte){
       const ids = await toegewezenIds(tb.koppeling_type, tb.koppeling_groep_id);
       if(!ids.length) continue;
@@ -192,38 +207,78 @@
         const { data: deelnemers } = await supabaseClient.from('toolbox_deelnemers').select('profiel_id').in('sessie_id', sessieIds);
         (deelnemers||[]).forEach(d => { if(d.profiel_id) deelnemerIds.add(d.profiel_id); });
       }
-      teller += ids.filter(id => deelnemerIds.has(id)).length;
-      noemer += ids.length;
+      ids.forEach(id => {
+        if(!perPersoon[id]) perPersoon[id] = { verplicht:0, gedaan:0 };
+        perPersoon[id].verplicht++;
+        if(deelnemerIds.has(id)) perPersoon[id].gedaan++;
+      });
     }
-    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer };
+    const idLijst = Object.keys(perPersoon);
+    if(!idLijst.length) return { percentage:0, teller:0, noemer:0, detail:[] };
+    const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam, personeelsnummer').in('id', idLijst);
+    let teller = 0, noemer = 0;
+    const detail = idLijst.map(id => {
+      const p = (profielen||[]).find(x=>x.id===id);
+      const stat = perPersoon[id];
+      teller += stat.gedaan; noemer += stat.verplicht;
+      const percentage = stat.verplicht ? Math.round((stat.gedaan/stat.verplicht)*100) : 100;
+      return { personeelsnummer: p?.personeelsnummer || '—', naam: p ? p.voornaam + ' ' + p.achternaam : '—', werkelijk: stat.gedaan, streefaantal: stat.verplicht, percentage };
+    }).sort((a,b) => a.percentage - b.percentage);
+    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer, detail };
   }
 
   async function berekenOpleidingen(){
     const { data: opleidingen } = await supabaseClient.from('opleidingen').select('*');
-    if(!opleidingen || !opleidingen.length) return { percentage:0, teller:0, noemer:0 };
-    let teller = 0, noemer = 0;
+    if(!opleidingen || !opleidingen.length) return { percentage:0, teller:0, noemer:0, detail:[] };
+    const perPersoon = {};
     for(const o of opleidingen){
       const ids = await toegewezenIds(o.koppeling_type, o.koppeling_groep_id);
       if(!ids.length) continue;
       const { data: actieveVersie } = await supabaseClient.from('opleiding_versies').select('id').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
-      if(!actieveVersie) continue;
-      const { data: geslaagd } = await supabaseClient.from('opleiding_pogingen').select('profiel_id').eq('versie_id', actieveVersie.id).eq('geslaagd', true).in('profiel_id', ids);
-      const geslaagdeIds = new Set((geslaagd||[]).map(g=>g.profiel_id));
-      teller += geslaagdeIds.size;
-      noemer += ids.length;
+      let geslaagdeIds = new Set();
+      if(actieveVersie){
+        const { data: geslaagd } = await supabaseClient.from('opleiding_pogingen').select('profiel_id').eq('versie_id', actieveVersie.id).eq('geslaagd', true).in('profiel_id', ids);
+        geslaagdeIds = new Set((geslaagd||[]).map(g=>g.profiel_id));
+      }
+      ids.forEach(id => {
+        if(!perPersoon[id]) perPersoon[id] = { verplicht:0, gedaan:0 };
+        perPersoon[id].verplicht++;
+        if(geslaagdeIds.has(id)) perPersoon[id].gedaan++;
+      });
     }
-    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer };
+    const idLijst = Object.keys(perPersoon);
+    if(!idLijst.length) return { percentage:0, teller:0, noemer:0, detail:[] };
+    const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam, personeelsnummer').in('id', idLijst);
+    let teller = 0, noemer = 0;
+    const detail = idLijst.map(id => {
+      const p = (profielen||[]).find(x=>x.id===id);
+      const stat = perPersoon[id];
+      teller += stat.gedaan; noemer += stat.verplicht;
+      const percentage = stat.verplicht ? Math.round((stat.gedaan/stat.verplicht)*100) : 100;
+      return { personeelsnummer: p?.personeelsnummer || '—', naam: p ? p.voornaam + ' ' + p.achternaam : '—', werkelijk: stat.gedaan, streefaantal: stat.verplicht, percentage };
+    }).sort((a,b) => a.percentage - b.percentage);
+    return { percentage: noemer ? Math.round((teller/noemer)*100) : 0, teller, noemer, detail };
   }
 
   async function berekenKeuringen(){
-    const { data: middelen } = await supabaseClient.from('arbeidsmiddelen').select('id');
-    if(!middelen || !middelen.length) return { percentage:0, teller:0, noemer:0 };
+    const { data: middelen } = await supabaseClient.from('arbeidsmiddelen').select('id, uniek_id, type');
+    if(!middelen || !middelen.length) return { percentage:0, teller:0, noemer:0, detail:[] };
     let teller = 0;
+    const detail = [];
     for(const m of middelen){
       const { data: laatste } = await supabaseClient.from('keuringen').select('*').eq('arbeidsmiddel_id', m.id).order('datum', { ascending:false }).limit(1).maybeSingle();
-      if(laatste && laatste.resultaat === 'goedgekeurd' && (!laatste.volgende_keuring || new Date(laatste.volgende_keuring) >= new Date())) teller++;
+      const geldig = laatste && laatste.resultaat === 'goedgekeurd' && (!laatste.volgende_keuring || new Date(laatste.volgende_keuring) >= new Date());
+      if(geldig) teller++;
+      let status = 'Nog geen keuring';
+      if(laatste){
+        if(laatste.resultaat === 'afgekeurd') status = 'Afgekeurd';
+        else if(!geldig) status = 'Verlopen';
+        else status = 'Geldig';
+      }
+      detail.push({ personeelsnummer: m.uniek_id, naam: m.type || '—', werkelijk: geldig?1:0, streefaantal:1, percentage: geldig?100:0, statusLabel: status });
     }
-    return { percentage: Math.round((teller/middelen.length)*100), teller, noemer: middelen.length };
+    detail.sort((a,b) => a.percentage - b.percentage);
+    return { percentage: Math.round((teller/middelen.length)*100), teller, noemer: middelen.length, detail };
   }
 
   async function berekenActies(){
@@ -243,27 +298,31 @@
     return { openMeldingen, openActies: openActies.length, verlopenActies, openStofAanvragen, openMiddelAanvragen };
   }
 
+  let laatsteData = {};
+
   async function render(){
     const inhoud = document.getElementById('inhoud');
     const [wpi, mbb, toolboxen, opleidingen, keuringen, acties] = await Promise.all([
       berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies()
     ]);
+    laatsteData = { wpi, mbb, toolboxen, opleidingen, keuringen };
 
     const donuts = [
-      { titel:'WPI', sub:`${wpi.teller}/${wpi.noemer} medewerkers actief (90 dgn)`, data:wpi },
-      { titel:'MBB', sub:`${mbb.teller}/${mbb.noemer} management actief (90 dgn)`, data:mbb },
-      { titel:'Toolboxen', sub:`${toolboxen.teller}/${toolboxen.noemer} verplichte deelnames`, data:toolboxen },
-      { titel:'Opleidingen', sub:`${opleidingen.teller}/${opleidingen.noemer} behaald`, data:opleidingen },
-      { titel:'Keuringen', sub:`${keuringen.teller}/${keuringen.noemer} arbeidsmiddelen geldig`, data:keuringen },
+      { key:'wpi', titel:'WPI', sub:`${wpi.teller}/${wpi.noemer} (streefaantal)`, data:wpi },
+      { key:'mbb', titel:'MBB', sub:`${mbb.teller}/${mbb.noemer} (streefaantal)`, data:mbb },
+      { key:'toolboxen', titel:'Toolboxen', sub:`${toolboxen.teller}/${toolboxen.noemer} verplichte deelnames`, data:toolboxen },
+      { key:'opleidingen', titel:'Opleidingen', sub:`${opleidingen.teller}/${opleidingen.noemer} behaald`, data:opleidingen },
+      { key:'keuringen', titel:'Keuringen', sub:`${keuringen.teller}/${keuringen.noemer} arbeidsmiddelen geldig`, data:keuringen },
     ];
 
     inhoud.innerHTML = `
       <div class="donut-grid">
         ${donuts.map(d => `
-          <div class="card donut-kaart">
+          <div class="card donut-kaart" style="cursor:pointer" onclick="toonDetail('${d.key}','${d.titel}')">
             ${donutSvg(d.data.percentage, kleurVoor(d.data.percentage))}
             <div class="donut-titel">${d.titel}</div>
             <div class="donut-sub">${d.sub}</div>
+            <div class="meta" style="margin-top:4px; color:var(--accent)">Bekijk per persoon →</div>
           </div>
         `).join('')}
       </div>
@@ -275,6 +334,23 @@
         <div class="stat-rij"><span>Waarvan over de deadline</span><span class="stat-getal ${acties.verlopenActies>0?'rood':''}">${acties.verlopenActies}</span></div>
         <div class="stat-rij"><span>Openstaande aanvragen gevaarlijke stoffen</span><span class="stat-getal">${acties.openStofAanvragen}</span></div>
         <div class="stat-rij"><span>Openstaande aanvragen arbeidsmiddelen</span><span class="stat-getal">${acties.openMiddelAanvragen}</span></div>
+      </div>
+    `;
+  }
+
+  function toonDetail(key, titel){
+    const data = laatsteData[key];
+    const kolomLabel = key === 'keuringen' ? 'Uniek ID' : 'Personeelsnr.';
+    document.getElementById('inhoud').innerHTML = `
+      <button class="ghost" style="margin-bottom:14px" onclick="render()">← Terug naar overzicht</button>
+      <div class="eyebrow" style="margin-top:0">${titel} — per ${key==='keuringen'?'arbeidsmiddel':'persoon'}</div>
+      <div class="card">
+        ${(data.detail||[]).map(r => `
+          <div class="stat-rij">
+            <span><b>${r.personeelsnummer}</b> ${r.naam !== '—' ? '· ' + r.naam : ''}</span>
+            <span class="stat-getal ${r.percentage<50?'rood':''}">${r.statusLabel || (r.werkelijk + '/' + r.streefaantal)} ${r.statusLabel?'':`(${r.percentage}%)`}</span>
+          </div>
+        `).join('') || '<div class="meta">Geen gegevens.</div>'}
       </div>
     `;
   }

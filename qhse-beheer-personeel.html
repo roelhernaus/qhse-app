@@ -196,6 +196,10 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bewInDienst" style="width:auto" ${p.in_dienst?'checked':''}> In dienst
         </label>
+        <label>WPI-streefaantal (leeg = organisatiestandaard)</label>
+        <input type="number" id="bewWpiStreef" min="0" value="${p.wpi_streefaantal_override ?? ''}" placeholder="Standaard gebruiken">
+        <label>MBB-streefaantal (leeg = organisatiestandaard)</label>
+        <input type="number" id="bewMbbStreef" min="0" value="${p.mbb_streefaantal_override ?? ''}" placeholder="Standaard gebruiken">
         <label>Keuringsbevoegdheden</label>
         <div class="meta" style="margin-bottom:6px">Alleen relevant voor de rol Keurmeester — bepaalt voor welke categorieën arbeidsmiddelen deze persoon zelf een keuring mag vastleggen.</div>
         <div>${bevoegdhedenHtml}</div>
@@ -229,13 +233,17 @@
     const personeelsnummer = document.getElementById('bewPersoneelsnr').value.trim() || null;
     const rol = document.getElementById('bewRol').value;
     const in_dienst = document.getElementById('bewInDienst').checked;
+    const wpiStreefRaw = document.getElementById('bewWpiStreef').value;
+    const mbbStreefRaw = document.getElementById('bewMbbStreef').value;
+    const wpi_streefaantal_override = wpiStreefRaw === '' ? null : parseInt(wpiStreefRaw);
+    const mbb_streefaantal_override = mbbStreefRaw === '' ? null : parseInt(mbbStreefRaw);
     const foutEl = document.getElementById('bewFout');
     const meldingEl = document.getElementById('bewMelding');
     foutEl.classList.add('verborgen');
     meldingEl.classList.add('verborgen');
 
     const { error } = await supabaseClient.from('profielen')
-      .update({ personeelsnummer, rol, in_dienst, keuringsbevoegdheden: bewBevoegdheden }).eq('id', id);
+      .update({ personeelsnummer, rol, in_dienst, keuringsbevoegdheden: bewBevoegdheden, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
     if(error){
       foutEl.textContent = 'Opslaan mislukt: ' + error.message;
       foutEl.classList.remove('verborgen');

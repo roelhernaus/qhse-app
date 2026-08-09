@@ -103,6 +103,21 @@
     <div class="melding verborgen" id="huisstijlMelding"></div>
   </div>
 
+  <div class="eyebrow">Streefaantallen</div>
+  <div class="card">
+    <div class="meta" style="margin-bottom:10px">Standaard aantal per jaar, gebruikt in het Compliance-dashboard. Kan per persoon overruled worden via Personeel.</div>
+    <label style="margin-top:0">WPI per jaar (standaard)</label>
+    <input type="number" id="streefWpi" min="0">
+    <label>MBB per jaar (standaard)</label>
+    <input type="number" id="streefMbb" min="0">
+    <div class="row" style="margin-top:14px">
+      <span></span>
+      <button class="primary" onclick="opslaanStreefaantallen()">Opslaan</button>
+    </div>
+    <div class="fout verborgen" id="streefFout"></div>
+    <div class="melding verborgen" id="streefMelding"></div>
+  </div>
+
   <div class="eyebrow">Gevarenpictogrammen (CLP)</div>
   <div class="card">
     <div class="meta" style="margin-bottom:12px">Upload hier eenmalig de negen officiële CLP-gevarenpictogrammen (bijv. gedownload van de website van de Nederlandse Arbeidsinspectie). Deze worden daarna hergebruikt in elke WIK.</div>
@@ -209,6 +224,8 @@
     huidigeOrganisatie = org;
     document.getElementById('bedrijfsnaam').value = org.naam || '';
     document.getElementById('appNaam').value = org.app_naam || '';
+    document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
+    document.getElementById('streefMbb').value = org.mbb_streefaantal_per_jaar ?? 4;
     if(org.logo_pad){
       const { data } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(org.logo_pad, 300);
       if(data){
@@ -296,6 +313,17 @@
     if(!naam){ foutEl.textContent = 'Bedrijfsnaam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
 
     const { error } = await supabaseClient.from('organisaties').update({ naam, app_naam }).eq('id', huidigeOrganisatie.id);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function opslaanStreefaantallen(){
+    const wpi_streefaantal_per_jaar = parseInt(document.getElementById('streefWpi').value) || 0;
+    const mbb_streefaantal_per_jaar = parseInt(document.getElementById('streefMbb').value) || 0;
+    const foutEl = document.getElementById('streefFout');
+    const meldingEl = document.getElementById('streefMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('organisaties').update({ wpi_streefaantal_per_jaar, mbb_streefaantal_per_jaar }).eq('id', huidigeOrganisatie.id);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
   }
