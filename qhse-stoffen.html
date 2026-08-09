@@ -40,7 +40,11 @@
 </head>
 <body>
 
-<div id="login-scherm" class="wrap">
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft, #5a5c57);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
   <div class="eyebrow">QHSE-systeem</div>
   <h1 style="margin-bottom:18px">Inloggen</h1>
   <div class="card">
@@ -234,8 +238,13 @@
 
   if(supabaseClient){
     supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
       if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
     });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
   }
 </script>
 </body>
