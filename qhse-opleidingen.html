@@ -258,7 +258,8 @@
     let goed = 0;
     vragen.forEach(v => { if(antwoorden[v.id] === v.juiste_antwoord) goed++; });
     const score = Math.round((goed / vragen.length) * 100);
-    const geslaagd = score >= WI_SLAAGPERCENTAGE;
+    const benodigdAantal = Math.round(vragen.length * (WI_SLAAGPERCENTAGE / 100));
+    const geslaagd = goed >= benodigdAantal;
 
     const { error } = await supabaseClient.from('opleiding_pogingen').insert({
       versie_id: versie.id, profiel_id: huidigProfiel.id, score, geslaagd

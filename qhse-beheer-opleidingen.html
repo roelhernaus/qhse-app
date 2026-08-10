@@ -396,6 +396,11 @@
     nieuweVragen.splice(i,1);
     render();
   }
+  function wisselVraagType(i, nieuwType){
+    nieuweVragen[i].type = nieuwType;
+    nieuweVragen[i].juist = nieuwType === 'ja/nee' ? 'ja' : 'A';
+    render();
+  }
   function bewerkVraag(i, veld, waarde){
     nieuweVragen[i][veld] = waarde;
   }
@@ -407,7 +412,7 @@
         <label>Vraagtekst</label>
         <textarea rows="2" oninput="bewerkVraag(${i},'tekst',this.value)">${v.tekst}</textarea>
         <label>Type</label>
-        <select onchange="bewerkVraag(${i},'type',this.value); render();">
+        <select onchange="wisselVraagType(${i},this.value)">
           <option value="ja/nee" ${v.type==='ja/nee'?'selected':''}>Ja/Nee</option>
           <option value="meerkeuze" ${v.type==='meerkeuze'?'selected':''}>Meerkeuze (A/B/C/D)</option>
         </select>
