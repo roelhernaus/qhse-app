@@ -454,6 +454,7 @@
           ${u.gebruikt ? `<span class="tag" style="background:var(--green-dim); color:var(--green);">Gebruikt</span>` : `<span class="tag">Nog open</span>`}
         </div>
         ${u.omschrijving ? `<div class="meta" style="margin-top:6px">${u.omschrijving}</div>` : ''}
+        ${uitnodigingType==='intern' && u.rol ? `<div class="meta" style="margin-top:4px">Rol bij registratie: <b>${u.rol}</b></div>` : ''}
         ${gebruiker ? `<div class="meta" style="margin-top:4px">Gebruikt door ${gebruiker.voornaam} ${gebruiker.achternaam}</div>` : ''}
         ${!u.gebruikt ? `
           <div class="row" style="margin-top:8px">
@@ -476,7 +477,7 @@
         2. Klik bij de nieuwe code op "📋 Kopieer link + code".<br>
         3. Plak dat bericht in een mail, WhatsApp of sms naar de nieuwe ${uitnodigingType==='extern' ? 'onderaannemer/klant' : 'medewerker'}.<br>
         4. Diegene opent de link, vult de code + eigen gegevens in, en heeft direct een werkend account${uitnodigingType==='extern' ? ' met alleen toegang tot het melden-gedeelte' : ' als medewerker'}.<br>
-        5. ${uitnodigingType==='intern' ? 'Pas daarna eventueel de rol/personeelsnummer aan via de personeelslijst.' : 'De code is na één keer gebruiken automatisch verbruikt.'}
+        5. ${uitnodigingType==='intern' ? 'De rol staat al bij het account klaar zoals jij die koos — pas eventueel nog het personeelsnummer aan via de personeelslijst.' : 'De code is na één keer gebruiken automatisch verbruikt.'}
       </div>
       <div class="meta" style="margin-bottom:16px">${config.uitleg}</div>
       <div class="card">
@@ -489,6 +490,13 @@
       <div class="card">
         <label style="margin-top:0">Omschrijving (optioneel${uitnodigingType==='extern' ? ", bijv. bedrijfsnaam" : ""})</label>
         <input type="text" id="uiOmschrijving" placeholder="${uitnodigingType==='extern' ? "Bijv. 'Onderaannemer De Vries B.V.'" : "Bijv. 'Nieuwe monteur, start 1 september'"}">
+        ${uitnodigingType==='intern' ? `
+          <label>Rol bij registratie</label>
+          <select id="uiRol">
+            ${ROLLEN.map(r => `<option value="${r}" ${r==='medewerker'?'selected':''}>${r}</option>`).join('')}
+          </select>
+          <div class="meta" style="margin-top:4px">Diegene krijgt deze rol direct bij het aanmaken van het account — geen aparte stap achteraf nodig.</div>
+        ` : ''}
         <button class="primary" style="margin-top:10px" onclick="nieuweUitnodiging()">+ Code genereren</button>
       </div>
       <div class="eyebrow" style="margin-top:20px">Codes</div>
@@ -516,9 +524,11 @@
   async function nieuweUitnodiging(){
     const omschrijving = document.getElementById('uiOmschrijving').value.trim() || null;
     const code = genereerCode();
-    const { error } = await supabaseClient.from(UITNODIGING_CONFIG[uitnodigingType].tabel).insert({
-      organisatie_id: huidigProfiel.organisatie_id, code, omschrijving, aangemaakt_door: huidigProfiel.id
-    });
+    const payload = { organisatie_id: huidigProfiel.organisatie_id, code, omschrijving, aangemaakt_door: huidigProfiel.id };
+    if(uitnodigingType === 'intern'){
+      payload.rol = document.getElementById('uiRol').value;
+    }
+    const { error } = await supabaseClient.from(UITNODIGING_CONFIG[uitnodigingType].tabel).insert(payload);
     if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
     await render();
   }
