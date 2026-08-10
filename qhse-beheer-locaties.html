@@ -227,19 +227,30 @@
     const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(checkinUrl)}`;
 
     let checkinsQuery = supabaseClient
-      .from('checkins').select('*, profielen(voornaam, achternaam)').eq('locatie_id', l.id).is('uitgecheckt_op', null)
+      .from('checkins').select('*').eq('locatie_id', l.id).is('uitgecheckt_op', null)
       .order('ingecheckt_op', { ascending:true });
     if(huidigeOrganisatie.checkin_dagelijks_resetten){
       const vandaag00 = new Date(); vandaag00.setHours(0,0,0,0);
       checkinsQuery = checkinsQuery.gte('ingecheckt_op', vandaag00.toISOString());
     }
-    const { data: checkins } = await checkinsQuery;
+    const { data: checkins, error: checkinsFout } = await checkinsQuery;
+    if(checkinsFout) console.error('Kon checkins niet laden:', checkinsFout);
 
-    const rows = (checkins||[]).map(c => `
+    const profielIds = (checkins||[]).map(c => c.profiel_id);
+    let profielenMap = {};
+    if(profielIds.length){
+      const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', profielIds);
+      (profielen||[]).forEach(p => { profielenMap[p.id] = p; });
+    }
+
+    const rows = (checkins||[]).map(c => {
+      const p = profielenMap[c.profiel_id];
+      return `
       <div class="card row">
-        <span>${c.profielen ? c.profielen.voornaam + ' ' + c.profielen.achternaam : '—'}</span>
+        <span>${p ? p.voornaam + ' ' + p.achternaam : '—'}</span>
         <button class="ghost" onclick="checkUit('${c.id}')">Uitchecken</button>
-      </div>`).join('') || '<div class="meta">Niemand ingecheckt.</div>';
+      </div>`;
+    }).join('') || '<div class="meta">Niemand ingecheckt.</div>';
 
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
