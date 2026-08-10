@@ -208,23 +208,26 @@
     { naam:'Logboeken', pagina:'qhse-logboeken.html', icon:'logboeken' },
   ];
   const MODULES_BACKEND = [
-    { naam:'Compliance', pagina:'qhse-beheer-compliance.html', icon:'compliance' },
-    { naam:'Personeel', pagina:'qhse-beheer-personeel.html', icon:'personeel' },
-    { naam:'Groepen', pagina:'qhse-beheer-groepen.html', icon:'groepen' },
-    { naam:'Toolboxen', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen' },
-    { naam:'Opleidingen', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen' },
-    { naam:'Stoffen', pagina:'qhse-beheer-stoffen.html', icon:'stoffen' },
-    { naam:'Keuringen', pagina:'qhse-beheer-keuringen.html', icon:'keuringen' },
-    { naam:'Logboeken', pagina:'qhse-beheer-logboeken.html', icon:'logboeken' },
-    { naam:'Instellingen', pagina:'qhse-beheer-instellingen.html', icon:'instellingen' },
-    { naam:'Audittrail', pagina:'qhse-beheer-auditlog.html', icon:'auditlog' },
+    { naam:'Compliance', pagina:'qhse-beheer-compliance.html', icon:'compliance', rollen:['admin','kam'] },
+    { naam:'Personeel', pagina:'qhse-beheer-personeel.html', icon:'personeel', rollen:['admin','hr','kam'] },
+    { naam:'Groepen', pagina:'qhse-beheer-groepen.html', icon:'groepen', rollen:['admin','hr'] },
+    { naam:'Toolboxen', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen', rollen:['admin','kam'] },
+    { naam:'Opleidingen', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen', rollen:['admin','kam'] },
+    { naam:'Stoffen', pagina:'qhse-beheer-stoffen.html', icon:'stoffen', rollen:['admin','kam'] },
+    { naam:'Keuringen', pagina:'qhse-beheer-keuringen.html', icon:'keuringen', rollen:['admin','kam','keurmeester'] },
+    { naam:'Logboeken', pagina:'qhse-beheer-logboeken.html', icon:'logboeken', rollen:['admin','kam'] },
+    { naam:'Instellingen', pagina:'qhse-beheer-instellingen.html', icon:'instellingen', rollen:['admin'] },
+    { naam:'Audittrail', pagina:'qhse-beheer-auditlog.html', icon:'auditlog', rollen:['admin','kam'] },
   ];
 
+  let huidigProfielRol = null;
+
   function bouwRail(){
+    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
     document.getElementById('railItemsFrontend').innerHTML = '<div class="rail-groep">Voor jou</div>' +
       MODULES_FRONTEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
     document.getElementById('railItemsBackend').innerHTML = '<div class="rail-groep">Beheer</div>' +
-      MODULES_BACKEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
+      toegestaneBackend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
   }
 
   function bouwTegels(lijst){
@@ -295,6 +298,7 @@
       .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfielId = profiel.id;
+    huidigProfielRol = profiel.rol;
 
     const volledigeNaam = profiel.voornaam + ' ' + profiel.achternaam;
     document.getElementById('avatarInitialen').textContent = initialen(volledigeNaam);
@@ -305,7 +309,8 @@
 
     bouwRail();
 
-    if(['admin','kam','hr'].includes(profiel.rol)){
+    const heeftBeheerToegang = MODULES_BACKEND.some(m => m.rollen.includes(profiel.rol));
+    if(heeftBeheerToegang){
       document.getElementById('omgevingToggle').classList.remove('verborgen');
     }
 
@@ -403,7 +408,8 @@
     document.getElementById('btnBackend').classList.toggle('actief', omgeving==='backend');
     document.getElementById('railItemsFrontend').classList.toggle('verborgen', omgeving!=='frontend');
     document.getElementById('railItemsBackend').classList.toggle('verborgen', omgeving!=='backend');
-    bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : MODULES_BACKEND);
+    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
+    bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : toegestaneBackend);
     toonDashboard();
     pasActiesBadgeToe();
   }
