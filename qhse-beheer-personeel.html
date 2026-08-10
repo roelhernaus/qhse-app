@@ -94,7 +94,8 @@
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'bewerken'
   let actiefProfielId = null;
-  const ROLLEN = ['medewerker','leidinggevende','kam','hr','admin','keurmeester','beheerder_kantoor'];
+  const ROLLEN = ['medewerker','leidinggevende','kam','hr','admin','keurmeester','beheerder_kantoor','extern'];
+  const INTERNE_ROLLEN = ROLLEN.filter(r => r !== 'extern');
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -494,7 +495,7 @@
         ${uitnodigingType==='intern' ? `
           <label>Rol bij registratie</label>
           <select id="uiRol">
-            ${ROLLEN.map(r => `<option value="${r}" ${r==='medewerker'?'selected':''}>${r}</option>`).join('')}
+            ${INTERNE_ROLLEN.map(r => `<option value="${r}" ${r==='medewerker'?'selected':''}>${r}</option>`).join('')}
           </select>
           <div class="meta" style="margin-top:4px">Diegene krijgt deze rol direct bij het aanmaken van het account — geen aparte stap achteraf nodig.</div>
         ` : ''}
