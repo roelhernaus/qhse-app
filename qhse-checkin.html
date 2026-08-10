@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Inchecken</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --red:#c0392b; --red-dim:#fbeae8;
+    --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:420px; margin:0 auto; padding:40px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; text-align:center; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0 0 22px; text-align:center; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:26px; text-align:center; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; text-align:left; }
+  label:first-of-type{ margin-top:0; }
+  input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:10px; border:1px solid var(--border); background:#fff; padding:14px 20px; font-size:15px; font-weight:700; width:100%; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.uit{ background:var(--red); color:#fff; border-color:var(--red); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .status-badge{ display:inline-block; padding:6px 16px; border-radius:20px; font-size:13px; font-weight:700; margin-bottom:16px; }
+  .status-in{ background:var(--green-dim); color:var(--green); }
+  .status-uit{ background:#eee; color:var(--text-soft); }
+  .verborgen{ display:none; }
+  .disclaimer{ font-size:11.5px; color:var(--text-soft); margin-top:18px; line-height:1.5; padding:10px 12px; background:var(--accent-dim); border-radius:8px; }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1>Inloggen om in te checken</h1>
+  <div class="card" style="text-align:left">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-locatie" class="wrap verborgen">
+  <div class="card">
+    <b>Geen (geldige) locatie</b>
+    <p class="meta" style="margin-top:8px; color:var(--text-soft); font-size:13px;">Scan de QR-code op de locatie opnieuw, of vraag je beheerder om een nieuwe code.</p>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 id="locatieNaam">—</h1>
+  <div class="card">
+    <div id="statusBadge" class="status-badge status-uit">Uitgecheckt</div>
+    <div id="knopGebied"></div>
+    <div class="fout verborgen" id="ciFout"></div>
+  </div>
+  <div class="disclaimer">Dit systeem houdt alleen bij óf je op dit moment bent ingecheckt — er wordt geen aanwezigheidsduur, werktijd of geschiedenis van in-/uitchektijden vastgelegd of gebruikt.</div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let locatie = null;
+  let actieveCheckin = null;
+  let dagelijksResetten = true;
+
+  function haalLocatieCodeUitUrl(){
+    const params = new URLSearchParams(window.location.search);
+    return params.get('locatie');
+  }
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+
+  async function initApp(){
+    const code = haalLocatieCodeUitUrl();
+    if(!code){
+      document.getElementById('login-scherm').classList.add('verborgen');
+      document.getElementById('geen-locatie').classList.remove('verborgen');
+      return;
+    }
+
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+
+    const { data: org } = await supabaseClient.from('organisaties').select('checkin_dagelijks_resetten').eq('id', profiel.organisatie_id).single();
+    dagelijksResetten = org ? org.checkin_dagelijks_resetten : true;
+
+    const { data: loc, error: locFout } = await supabaseClient.from('locaties').select('*').eq('qr_code', code).maybeSingle();
+    if(locFout || !loc){
+      document.getElementById('login-scherm').classList.add('verborgen');
+      document.getElementById('geen-locatie').classList.remove('verborgen');
+      return;
+    }
+    locatie = loc;
+
+    document.getElementById('login-scherm').classList.add('verborgen');
+    document.getElementById('locatieNaam').textContent = locatie.naam;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await ververStatus();
+  }
+
+  async function ververStatus(){
+    let query = supabaseClient
+      .from('checkins').select('*').eq('locatie_id', locatie.id).eq('profiel_id', huidigProfiel.id)
+      .is('uitgecheckt_op', null).order('ingecheckt_op', { ascending:false }).limit(1);
+    if(dagelijksResetten){
+      const vandaag00 = new Date(); vandaag00.setHours(0,0,0,0);
+      query = query.gte('ingecheckt_op', vandaag00.toISOString());
+    }
+    const { data: checkins } = await query;
+    actieveCheckin = (checkins && checkins.length) ? checkins[0] : null;
+
+    const badge = document.getElementById('statusBadge');
+    const knopGebied = document.getElementById('knopGebied');
+    if(actieveCheckin){
+      badge.textContent = '✓ Ingecheckt';
+      badge.className = 'status-badge status-in';
+      knopGebied.innerHTML = `<button class="uit" onclick="uitchecken()">Uitchecken</button>`;
+    } else {
+      badge.textContent = 'Uitgecheckt';
+      badge.className = 'status-badge status-uit';
+      knopGebied.innerHTML = `<button class="primary" onclick="inchecken()">Inchecken</button>`;
+    }
+  }
+
+  async function inchecken(){
+    const foutEl = document.getElementById('ciFout');
+    foutEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('checkins').insert({
+      organisatie_id: huidigProfiel.organisatie_id, locatie_id: locatie.id, profiel_id: huidigProfiel.id
+    });
+    if(error){ foutEl.textContent = 'Inchecken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await ververStatus();
+  }
+
+  async function uitchecken(){
+    if(!actieveCheckin) return;
+    const foutEl = document.getElementById('ciFout');
+    foutEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('checkins').update({ uitgecheckt_op: new Date().toISOString() }).eq('id', actieveCheckin.id);
+    if(error){ foutEl.textContent = 'Uitchecken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await ververStatus();
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>

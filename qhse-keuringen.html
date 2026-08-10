@@ -117,6 +117,12 @@
     document.getElementById('login-scherm').classList.add('verborgen');
     document.getElementById('app-scherm').classList.remove('verborgen');
     render();
+
+    const vanuitQr = new URLSearchParams(window.location.search).get('zoek');
+    if(vanuitQr){
+      document.getElementById('zoekId').value = vanuitQr;
+      await zoekOp();
+    }
   }
 
   function render(){

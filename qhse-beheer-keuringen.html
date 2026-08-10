@@ -511,6 +511,7 @@
           <button class="ghost" onclick="verwijderMiddel()">Arbeidsmiddel verwijderen</button>
           <button class="primary" onclick="opslaanMiddel()">Opslaan</button>
         </div>
+        <button class="ghost" style="width:100%; margin-top:10px" onclick="printMiddelQr('${m.uniek_id.replace(/'/g,"\\'")}')">🖨️ Print QR-sticker (A4)</button>
         <div class="fout verborgen" id="bewMiddelFout"></div>
         <div class="melding verborgen" id="bewMiddelMelding"></div>
       </div>
@@ -542,6 +543,30 @@
     const { error } = await supabaseClient.from('arbeidsmiddelen').delete().eq('id', actiefId);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     actiefId = null; scherm = 'lijst'; await render();
+  }
+
+  function printMiddelQr(uniekId){
+    const APP_URL = "https://roelhernaus.github.io/qhse-app";
+    const zoekUrl = `${APP_URL}/qhse-keuringen.html?zoek=${encodeURIComponent(uniekId)}`;
+    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(zoekUrl)}`;
+    const venster = window.open('', '_blank');
+    venster.document.write(`
+      <html><head><title>Keuring QR — ${uniekId}</title>
+      <style>
+        body{ font-family: Arial, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; }
+        h1{ font-size:20px; margin-bottom:4px; color:#555; font-weight:400; }
+        h2{ font-size:34px; margin-top:0; margin-bottom:26px; font-family:monospace; letter-spacing:.03em; }
+        img{ width:260px; height:260px; }
+        p{ font-size:13px; color:#888; margin-top:22px; }
+      </style></head><body>
+        <h1>Keuring opzoeken:</h1>
+        <h2>${uniekId}</h2>
+        <img src="${qrImg}">
+        <p>Scan met de camera van je telefoon</p>
+        <script>window.print();<\/script>
+      </body></html>
+    `);
+    venster.document.close();
   }
 
   async function verwijderKeuring(keuringId){
