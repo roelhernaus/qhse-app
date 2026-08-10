@@ -405,11 +405,14 @@
   }
 
   function kiesOmgeving(omgeving){
+    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
+    if(omgeving === 'backend' && toegestaneBackend.length === 0){
+      omgeving = 'frontend'; // vangnet: geen enkele beheer-module toegankelijk, dus niet eens tonen
+    }
     document.getElementById('btnFrontend').classList.toggle('actief', omgeving==='frontend');
     document.getElementById('btnBackend').classList.toggle('actief', omgeving==='backend');
     document.getElementById('railItemsFrontend').classList.toggle('verborgen', omgeving!=='frontend');
     document.getElementById('railItemsBackend').classList.toggle('verborgen', omgeving!=='backend');
-    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
     bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : toegestaneBackend);
     toonDashboard();
     pasActiesBadgeToe();
