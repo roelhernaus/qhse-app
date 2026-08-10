@@ -170,7 +170,7 @@
   async function nieuwLogboek(){
     const naam = prompt('Naam van het logboek:');
     if(!naam) return;
-    const soort = confirm('Wordt dit een Vergaderingsnotule?\\n\\nOK = Vergaderingsnotule\\nAnnuleren = Shiftverloop') ? 'vergadernotule' : 'shiftverloop';
+    const soort = confirm('Wordt dit een Vergaderingsnotule?\n\nOK = Vergaderingsnotule\nAnnuleren = Shiftverloop') ? 'vergadernotule' : 'shiftverloop';
     const { data, error } = await supabaseClient
       .from('logboeken').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort, koppeling_type: 'iedereen' })
       .select().single();

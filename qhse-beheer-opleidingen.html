@@ -160,7 +160,7 @@
   async function nieuweSoort(){
     const naam = prompt('Naam van de nieuwe soort:');
     if(!naam) return;
-    const is_alert = confirm('Is dit een "Alert"-soort? (altijd rood, altijd verplicht voor iedereen)\\n\\nOK = ja, dit is een alert\\nAnnuleren = nee, gewone soort');
+    const is_alert = confirm('Is dit een "Alert"-soort? (altijd rood, altijd verplicht voor iedereen)\n\nOK = ja, dit is een alert\nAnnuleren = nee, gewone soort');
     const { error } = await supabaseClient.from('opleiding_soorten').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, is_alert });
     if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
     await render();
