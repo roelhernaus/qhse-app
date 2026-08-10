@@ -194,10 +194,14 @@
       (vragen||[]).forEach(v => { aantalVragen[v.arbeidsmiddel_type_id] = (aantalVragen[v.arbeidsmiddel_type_id]||0) + 1; });
     }
     const rows = (typen||[]).map(t => `
-      <div class="card klikbaar" onclick="openChecklistType('${t.id}')">
+      <div class="card">
         <div class="row">
-          <span>${t.naam}</span>
-          <span class="meta">${aantalVragen[t.id] || 0} vragen</span>
+          <input type="text" id="typeNaam-${t.id}" value="${t.naam}" style="flex:1; margin-right:8px" onclick="event.stopPropagation()">
+          <button class="ghost" onclick="hernoemArbeidsmiddelType('${t.id}')">Opslaan</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="meta klikbaar" onclick="openChecklistType('${t.id}')" style="cursor:pointer">${aantalVragen[t.id] || 0} vragen bekijken →</span>
+          <button class="ghost" onclick="verwijderArbeidsmiddelType('${t.id}')">Verwijderen</button>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen typen binnen deze categorie.</div>';
     return `
@@ -217,6 +221,25 @@
     if(!naam) return;
     const { error } = await supabaseClient.from('arbeidsmiddel_typen').insert({ organisatie_id: huidigProfiel.organisatie_id, keuringscategorie_id: checklistCategorieId, naam });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function hernoemArbeidsmiddelType(id){
+    const nieuweNaam = document.getElementById('typeNaam-' + id).value.trim();
+    if(!nieuweNaam) return;
+    const { data: oud } = await supabaseClient.from('arbeidsmiddel_typen').select('naam').eq('id', id).single();
+    const { error } = await supabaseClient.from('arbeidsmiddel_typen').update({ naam: nieuweNaam }).eq('id', id);
+    if(error){ alert('Hernoemen mislukt: ' + error.message); return; }
+    if(oud && oud.naam !== nieuweNaam){
+      await supabaseClient.from('arbeidsmiddelen').update({ type: nieuweNaam }).eq('type', oud.naam);
+    }
+    await render();
+  }
+
+  async function verwijderArbeidsmiddelType(id){
+    if(!confirm('Dit type verwijderen? De bijbehorende checklist-vragen verdwijnen dan ook.')) return;
+    const { error } = await supabaseClient.from('arbeidsmiddel_typen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await render();
   }
 

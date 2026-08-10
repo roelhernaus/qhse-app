@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Groepen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:680px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.ghost{ background:transparent; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .klikbaar{ cursor:pointer; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Groepenbeheer is alleen voor Admin of HR.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>Groepen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'groep' | 'nieuw'
+  let actiefGroepId = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!['admin','hr'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
+    else if(scherm === 'groep') inhoud.innerHTML = await renderGroep();
+    else if(scherm === 'nieuw') inhoud.innerHTML = await renderNieuw();
+  }
+
+  async function renderLijst(){
+    const { data: groepen, error } = await supabaseClient.from('groepen').select('*, aanwijzing_soorten(naam)').order('naam');
+    if(error) return '<div class="fout">Kon groepen niet laden: ' + error.message + '</div>';
+    const rows = await Promise.all((groepen||[]).map(async (g) => {
+      const { count } = await supabaseClient.from('groep_leden').select('*', { count:'exact', head:true }).eq('groep_id', g.id);
+      return `
+        <div class="card klikbaar" onclick="openGroep('${g.id}')">
+          <div class="row">
+            <div><b>${g.naam}</b> ${g.systeemgroep ? '<span class="tag" style="margin-left:6px">Systeemgroep</span>' : ''}</div>
+            <span class="meta">${count ?? 0} leden</span>
+          </div>
+          ${g.aanwijzing_soorten ? `<div class="meta" style="margin-top:6px">Vereist aanwijzing: ${g.aanwijzing_soorten.naam}</div>` : ''}
+        </div>`;
+    }));
+    return `
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(groepen||[]).length} groepen</span>
+        <button class="primary" onclick="scherm='nieuw'; render();">+ Nieuwe groep</button>
+      </div>
+      ${rows.join('')}
+    `;
+  }
+
+  async function renderNieuw(){
+    const { data: soorten } = await supabaseClient.from('aanwijzing_soorten').select('*').order('naam');
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="ngNaam" placeholder="Bijv. 'BHV', 'Ploeg A', 'Projectteam Noord'">
+        <label>Vereiste aanwijzing (optioneel)</label>
+        <select id="ngVereisteAanwijzing">
+          <option value="">— geen vereiste —</option>
+          ${(soorten||[]).map(s => `<option value="${s.id}">${s.naam}</option>`).join('')}
+        </select>
+        <div class="meta" style="margin-top:4px">Kies je hier een soort, dan kan iemand alleen aan deze groep toegevoegd worden als hij/zij een geldige aanwijzing van dat type heeft. Dit wordt hard afgedwongen.</div>
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuweGroep()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="ngFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanNieuweGroep(){
+    const naam = document.getElementById('ngNaam').value.trim();
+    const vereiste_aanwijzing_soort_id = document.getElementById('ngVereisteAanwijzing').value || null;
+    const foutEl = document.getElementById('ngFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const { data, error } = await supabaseClient.from('groepen')
+      .insert({ organisatie_id: huidigProfiel.organisatie_id, naam, vereiste_aanwijzing_soort_id }).select().single();
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    actiefGroepId = data.id;
+    scherm = 'groep';
+    await render();
+  }
+
+  async function openGroep(id){
+    actiefGroepId = id;
+    scherm = 'groep';
+    await render();
+  }
+
+  async function renderGroep(){
+    const { data: g, error } = await supabaseClient.from('groepen').select('*').eq('id', actiefGroepId).single();
+    if(error) return '<div class="fout">Kon groep niet laden: ' + error.message + '</div>';
+    const { data: soorten } = await supabaseClient.from('aanwijzing_soorten').select('*').order('naam');
+    const { data: alleProfielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam, in_dienst').eq('in_dienst', true).order('voornaam');
+    const { data: leden } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', actiefGroepId);
+    const ledenIds = new Set((leden||[]).map(l=>l.profiel_id));
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="ggNaam" value="${g.naam}" ${g.systeemgroep ? 'disabled' : ''}>
+        <label>Vereiste aanwijzing (optioneel)</label>
+        <select id="ggVereisteAanwijzing">
+          <option value="">— geen vereiste —</option>
+          ${(soorten||[]).map(s => `<option value="${s.id}" ${g.vereiste_aanwijzing_soort_id===s.id?'selected':''}>${s.naam}</option>`).join('')}
+        </select>
+        ${g.systeemgroep ? '<div class="meta" style="margin-top:6px">Dit is een systeemgroep — de naam kan niet gewijzigd worden en de groep kan niet verwijderd worden.</div>' : ''}
+        <div class="row" style="margin-top:16px">
+          ${!g.systeemgroep ? `<button class="ghost" onclick="verwijderGroep()">Verwijderen</button>` : '<span></span>'}
+          <button class="primary" onclick="opslaanGroep()">Opslaan</button>
+        </div>
+        <div class="fout verborgen" id="ggFout"></div>
+        <div class="melding verborgen" id="ggMelding"></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Leden (${ledenIds.size})</div>
+      <div class="card">
+        ${(alleProfielen||[]).map(p => `
+          <span class="chip ${ledenIds.has(p.id)?'actief':''}" onclick="toggleLid('${p.id}', this)">${p.voornaam} ${p.achternaam}</span>
+        `).join('') || '<div class="meta">Geen actieve medewerkers gevonden.</div>'}
+        <div class="fout verborgen" id="ledenFout" style="margin-top:12px"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanGroep(){
+    const naam = document.getElementById('ggNaam').value.trim();
+    const vereiste_aanwijzing_soort_id = document.getElementById('ggVereisteAanwijzing').value || null;
+    const foutEl = document.getElementById('ggFout');
+    const meldingEl = document.getElementById('ggMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const payload = { vereiste_aanwijzing_soort_id };
+    if(document.getElementById('ggNaam').disabled === false) payload.naam = naam;
+    const { error } = await supabaseClient.from('groepen').update(payload).eq('id', actiefGroepId);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function verwijderGroep(){
+    if(!confirm('Deze groep verwijderen? Koppelingen naar deze groep (bijv. bij toolboxen of logboeken) worden dan ongeldig.')) return;
+    const { error } = await supabaseClient.from('groepen').delete().eq('id', actiefGroepId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    scherm = 'lijst';
+    await render();
+  }
+
+  async function toggleLid(profielId, chip){
+    const foutEl = document.getElementById('ledenFout');
+    foutEl.classList.add('verborgen');
+    const actief = chip.classList.contains('actief');
+    if(actief){
+      const { error } = await supabaseClient.from('groep_leden').delete().eq('groep_id', actiefGroepId).eq('profiel_id', profielId);
+      if(error){ foutEl.textContent = 'Verwijderen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      chip.classList.remove('actief');
+    } else {
+      const { error } = await supabaseClient.from('groep_leden').insert({ groep_id: actiefGroepId, profiel_id: profielId });
+      if(error){
+        foutEl.textContent = error.message.includes('geen geldige aanwijzing')
+          ? '⚠️ ' + error.message
+          : 'Toevoegen mislukt: ' + error.message;
+        foutEl.classList.remove('verborgen');
+        return;
+      }
+      chip.classList.add('actief');
+    }
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>
