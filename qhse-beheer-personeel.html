@@ -430,6 +430,8 @@
       const { data: gebruikers } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', gebruikersIds);
       (gebruikers||[]).forEach(g => { gebruikersMap[g.id] = g; });
     }
+    const REGISTRATIE_URL = 'https://roelhernaus.github.io/qhse-app/qhse-registreren-extern.html';
+
     const rows = (uitnodigingen||[]).map(u => {
       const gebruiker = u.gebruikt_door ? gebruikersMap[u.gebruikt_door] : null;
       return `
@@ -440,13 +442,25 @@
         </div>
         ${u.omschrijving ? `<div class="meta" style="margin-top:6px">${u.omschrijving}</div>` : ''}
         ${gebruiker ? `<div class="meta" style="margin-top:4px">Gebruikt door ${gebruiker.voornaam} ${gebruiker.achternaam}</div>` : ''}
-        ${!u.gebruikt ? `<button class="ghost" style="margin-top:8px" onclick="verwijderUitnodiging('${u.id}')">Verwijderen</button>` : ''}
+        ${!u.gebruikt ? `
+          <div class="row" style="margin-top:8px">
+            <button class="ghost" onclick="kopieerUitnodiging('${u.code}')">📋 Kopieer link + code</button>
+            <button class="ghost" onclick="verwijderUitnodiging('${u.id}')">Verwijderen</button>
+          </div>
+        ` : ''}
       </div>`;
     }).join('') || '<div class="meta">Nog geen uitnodigingen.</div>';
 
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="meta" style="margin-bottom:16px">Genereer een code en deel die (bijv. per mail of WhatsApp) met een onderaannemer of klant. Met deze code kan diegene zelf een account aanmaken via de registratiepagina, met alleen toegang tot het indienen en volgen van eigen meldingen.</div>
+      <div class="card">
+        <label style="margin-top:0">Registratielink (voor iedere code hetzelfde)</label>
+        <div class="row">
+          <span class="meta" style="word-break:break-all">${REGISTRATIE_URL}</span>
+          <button class="ghost" onclick="kopieerLink()">Kopieer</button>
+        </div>
+      </div>
       <div class="card">
         <label style="margin-top:0">Omschrijving (optioneel, bijv. bedrijfsnaam)</label>
         <input type="text" id="uiOmschrijving" placeholder="Bijv. 'Onderaannemer De Vries B.V.'">
@@ -455,6 +469,15 @@
       <div class="eyebrow" style="margin-top:20px">Codes</div>
       ${rows}
     `;
+  }
+
+  function kopieerLink(){
+    navigator.clipboard.writeText('https://roelhernaus.github.io/qhse-app/qhse-registreren-extern.html');
+  }
+
+  function kopieerUitnodiging(code){
+    const tekst = `Registreer je account voor het QHSE-systeem via: https://roelhernaus.github.io/qhse-app/qhse-registreren-extern.html\n\nJe uitnodigingscode is: ${code}`;
+    navigator.clipboard.writeText(tekst);
   }
 
   function genereerCode(){
