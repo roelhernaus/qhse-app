@@ -197,11 +197,12 @@
       leesTimerVerstreken = true;
       const btn = document.getElementById('verderKnop');
       if(btn){ btn.disabled = false; btn.textContent = 'Verder naar vragen'; }
-    }, WI_MIN_LEESTIJD * 1000);
+    }, (opleiding.minimale_kijktijd_seconden ?? WI_MIN_LEESTIJD) * 1000);
   }
 
   function renderIntro(){
     const { opleiding, versie } = actieveOpleiding;
+    const kijktijd = opleiding.minimale_kijktijd_seconden ?? WI_MIN_LEESTIJD;
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug</button>
       <div class="card">
@@ -210,7 +211,7 @@
         ${opleiding.pdf_pad ? `<button class="ghost" style="margin-top:10px" onclick="bekijkMateriaal('${opleiding.pdf_pad}')">📄 Bekijk het lesmateriaal (PDF)</button>` : ''}
         <div class="meta" style="margin-top:14px"><b>Wat is er veranderd:</b></div>
         <div style="margin-top:4px; font-size:13.5px">${versie.wijzigingslog}</div>
-        <button class="primary" id="verderKnop" style="width:100%; margin-top:20px" disabled onclick="scherm='quiz'; render();">Even lezen… (${WI_MIN_LEESTIJD}s)</button>
+        <button class="primary" id="verderKnop" style="width:100%; margin-top:20px" disabled onclick="scherm='quiz'; render();">Even lezen… (${kijktijd}s)</button>
       </div>
     `;
   }

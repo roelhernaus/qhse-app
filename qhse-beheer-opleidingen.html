@@ -268,6 +268,9 @@
         </select>
         <label>Interval (maanden)</label>
         <input type="number" id="bewInterval" value="${o.interval_maanden}">
+        <label>Minimale kijktijd voor het lezen van het materiaal (seconden)</label>
+        <input type="number" id="bewKijktijd" min="0" value="${o.minimale_kijktijd_seconden ?? 10}">
+        <div class="meta" style="margin-top:4px">Standaard 10 seconden. Zet dit hoger voor opleidingen met een wettelijk verplichte minimale instructietijd (bijv. werken met di-isocyanaten).</div>
         <label>Toegewezen aan</label>
         <select id="bewKoppelType" ${isAlert?'disabled':''}>
           <option value="iedereen" ${o.koppeling_type==='iedereen' || isAlert?'selected':''}>Iedereen</option>
@@ -281,7 +284,7 @@
 
         <label>Opleidingsmateriaal (PDF, verplicht)</label>
         <div class="row">
-          <span class="meta">${o.pdf_pad ? '📄 Materiaal gekoppeld' : '⚠️ Nog geen materiaal'}</span>
+          <span class="meta" id="materiaalAanwezig">${o.pdf_pad ? '📄 Materiaal gekoppeld' : '⚠️ Nog geen materiaal'}</span>
           <label class="ghost" style="display:inline-block; padding:8px 13px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
             ${o.pdf_pad ? 'Vervangen' : 'PDF toevoegen'}
             <input type="file" accept="application/pdf" style="display:none" onchange="uploadOpleidingMateriaal(this)">
@@ -326,7 +329,9 @@
     if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
     const { error: updateFout } = await supabaseClient.from('opleidingen').update({ pdf_pad: pad }).eq('id', actiefId);
     if(updateFout){ statusEl.textContent = 'Koppelen mislukt: ' + updateFout.message; return; }
-    await render();
+    statusEl.textContent = '✓ Materiaal geüpload.';
+    document.getElementById('materiaalAanwezig').textContent = '📄 Materiaal gekoppeld';
+    inputEl.parentElement.firstChild.textContent = 'Vervangen';
   }
 
   async function opslaanOpleiding(){
@@ -334,13 +339,14 @@
     const code = document.getElementById('bewCode').value.trim() || null;
     const soort_id = document.getElementById('bewSoort').value || null;
     const interval_maanden = parseInt(document.getElementById('bewInterval').value) || 12;
+    const minimale_kijktijd_seconden = parseInt(document.getElementById('bewKijktijd').value) || 0;
     const koppeling_type = document.getElementById('bewKoppelType').value;
     const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bewGroep').value || null) : null;
     const foutEl = document.getElementById('bewFout');
     const meldingEl = document.getElementById('bewMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
     const { error } = await supabaseClient.from('opleidingen')
-      .update({ naam, code, soort_id, interval_maanden, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
+      .update({ naam, code, soort_id, interval_maanden, minimale_kijktijd_seconden, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
     await render();
@@ -359,6 +365,19 @@
       alert('Voeg eerst opleidingsmateriaal (PDF) toe voordat je een versie kunt uitgeven.');
       return;
     }
+    const { data: actieveVersie } = await supabaseClient.from('opleiding_versies').select('id').eq('opleiding_id', actiefId).eq('actief', true).maybeSingle();
+    if(actieveVersie){
+      const { data: bestaandeVragen } = await supabaseClient.from('opleiding_vragen').select('*').eq('versie_id', actieveVersie.id).order('volgorde');
+      if(bestaandeVragen && bestaandeVragen.length){
+        nieuweVragen = bestaandeVragen.map(v => ({
+          tekst: v.tekst, type: v.type, juist: v.juiste_antwoord,
+          a: v.optie_a || '', b: v.optie_b || '', c: v.optie_c || '', d: v.optie_d || ''
+        }));
+        scherm = 'nieuweVersie';
+        render();
+        return;
+      }
+    }
     nieuweVragen = [
       { tekst:'', type:'ja/nee', juist:'ja', a:'', b:'', c:'', d:'' },
       { tekst:'', type:'ja/nee', juist:'ja', a:'', b:'', c:'', d:'' },
@@ -368,6 +387,7 @@
     render();
   }
   function voegVraagToe(){
+    if(nieuweVragen.length >= 15){ alert('Maximaal 15 vragen per versie.'); return; }
     nieuweVragen.push({ tekst:'', type:'ja/nee', juist:'ja', a:'', b:'', c:'', d:'' });
     render();
   }
@@ -415,9 +435,9 @@
       <div class="card">
         <label style="margin-top:0">Wijzigingslog (verplicht — wat is er veranderd?)</label>
         <textarea rows="3" id="nvWijzigingslog" placeholder="Bijv. 'Vraag 2 aangescherpt na incident X'"></textarea>
-        <div class="eyebrow" style="margin-top:16px">Vragen (minimaal 3)</div>
+        <div class="eyebrow" style="margin-top:16px">Vragen (${nieuweVragen.length}/15, minimaal 3)</div>
         ${vraagBlokken}
-        <button class="ghost" style="margin-top:10px" onclick="voegVraagToe()">+ Vraag toevoegen</button>
+        <button class="ghost" style="margin-top:10px" onclick="voegVraagToe()" ${nieuweVragen.length>=15?'disabled':''}>+ Vraag toevoegen</button>
         <div class="row" style="margin-top:18px">
           <span></span>
           <button class="primary" onclick="publiceerVersie()">Nieuwe versie publiceren</button>
