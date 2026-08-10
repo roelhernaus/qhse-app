@@ -81,10 +81,6 @@
     </div>
   </div>
 
-  <div class="callout">
-    Nieuwe medewerker toevoegen kan nog niet via dit scherm — dat vereist een sleutel die om veiligheidsredenen nooit in een website mag staan. Maak het account voorlopig aan via Supabase (Authentication → Users), en koppel het profiel via een SQL-migratie, zoals je al eerder deed.
-  </div>
-
   <div id="inhoud"></div>
 </div>
 
@@ -473,6 +469,14 @@
       <div class="tabs" style="margin-bottom:16px">
         <div class="tab ${uitnodigingType==='intern'?'actief':''}" onclick="uitnodigingType='intern'; render();">Interne medewerkers</div>
         <div class="tab ${uitnodigingType==='extern'?'actief':''}" onclick="uitnodigingType='extern'; render();">Externe partijen</div>
+      </div>
+      <div class="callout">
+        <b>Zo nodig je iemand uit:</b><br>
+        1. Klik hieronder op "Code genereren".<br>
+        2. Klik bij de nieuwe code op "📋 Kopieer link + code".<br>
+        3. Plak dat bericht in een mail, WhatsApp of sms naar de nieuwe ${uitnodigingType==='extern' ? 'onderaannemer/klant' : 'medewerker'}.<br>
+        4. Diegene opent de link, vult de code + eigen gegevens in, en heeft direct een werkend account${uitnodigingType==='extern' ? ' met alleen toegang tot het melden-gedeelte' : ' als medewerker'}.<br>
+        5. ${uitnodigingType==='intern' ? 'Pas daarna eventueel de rol/personeelsnummer aan via de personeelslijst.' : 'De code is na één keer gebruiken automatisch verbruikt.'}
       </div>
       <div class="meta" style="margin-bottom:16px">${config.uitleg}</div>
       <div class="card">

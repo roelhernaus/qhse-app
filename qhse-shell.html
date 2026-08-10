@@ -298,6 +298,11 @@
     const { data: profiel, error } = await supabaseClient
       .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+
+    if(profiel.rol === 'extern'){
+      window.location.href = 'qhse-extern.html';
+      return;
+    }
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
