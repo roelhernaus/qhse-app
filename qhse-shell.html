@@ -119,14 +119,14 @@
       </div>
     </div>
     <div class="card">
-      <label>E-mailadres</label>
+      <label id="lblEmail">E-mailadres</label>
       <input type="email" id="loginEmail">
-      <label>Wachtwoord</label>
+      <label id="lblWachtwoord">Wachtwoord</label>
       <input type="password" id="loginWachtwoord">
-      <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+      <button class="primary" style="width:100%; margin-top:16px" onclick="login()" id="btnInloggen">Inloggen</button>
       <div class="fout verborgen" id="loginFout"></div>
     </div>
-    <a href="qhse-registreren.html" style="display:block; text-align:center; margin-top:14px; font-size:12.5px; color:var(--text-secondary); text-decoration:none;">Nog geen account? Account aanmaken</a>
+    <a href="qhse-registreren.html" id="lnkRegistreren" style="display:block; text-align:center; margin-top:14px; font-size:12.5px; color:var(--text-secondary); text-decoration:none;">Nog geen account? Account aanmaken</a>
   </div>
 </div>
 
@@ -139,7 +139,7 @@
       </div>
     </div>
 
-    <div class="rail-item" onclick="toonDashboard(); document.querySelectorAll('.rail-item').forEach(i=>i.classList.remove('actief'));" style="border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+    <div class="rail-item" id="railDashboardItem" onclick="toonDashboard(); document.querySelectorAll('.rail-item').forEach(i=>i.classList.remove('actief'));" style="border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span id="railDashboardTekst">Dashboard</span></div>
     <div id="railItemsFrontend"></div>
     <div id="railItemsBackend" class="verborgen"></div>
   </nav>
@@ -159,13 +159,13 @@
       </div>
       <div style="display:flex; align-items:center; margin-left:auto;">
         <div class="theme-toggle" onclick="wisselThema()" id="themeIcon">☀</div>
-        <button onclick="uitloggen()">Uitloggen</button>
+        <button onclick="uitloggen()" id="btnUitloggen">Uitloggen</button>
       </div>
     </div>
     <div id="frameGebied">
       <div id="dashboardScherm">
-        <div class="eyebrow">Overzicht</div>
-        <h2>Dashboard</h2>
+        <div class="eyebrow" id="lblOverzicht">Overzicht</div>
+        <h2 id="lblDashboard">Dashboard</h2>
         <div class="tegel-grid" id="tegelGrid"></div>
       </div>
       <iframe id="hoofdFrame" src="" style="display:none"></iframe>
@@ -198,37 +198,79 @@
   const KLEUREN = ['#3FB8AF','#E2725B','#5B8DEF','#E8A33D','#8E6BC1','#4FB477','#C15B8E','#6B9BC1','#B57A10'];
 
   const MODULES_FRONTEND = [
-    { naam:'Mijn Acties', pagina:'qhse-acties.html', icon:'acties' },
-    { naam:'Meldingen', pagina:'qhse-meldingen.html', icon:'meldingen' },
-    { naam:'WPI', pagina:'qhse-wpi.html', icon:'wpi' },
-    { naam:'MBB', pagina:'qhse-mbb.html', icon:'mbb' },
-    { naam:'Toolboxen', pagina:'qhse-toolboxen.html', icon:'toolboxen' },
-    { naam:'Opleidingen', pagina:'qhse-opleidingen.html', icon:'opleidingen' },
-    { naam:'Stoffen', pagina:'qhse-stoffen.html', icon:'stoffen' },
-    { naam:'Keuringen', pagina:'qhse-keuringen.html', icon:'keuringen' },
-    { naam:'Logboeken', pagina:'qhse-logboeken.html', icon:'logboeken' },
+    { naam:'Mijn Acties', naam_en:'My Actions', pagina:'qhse-acties.html', icon:'acties' },
+    { naam:'Meldingen', naam_en:'Reports', pagina:'qhse-meldingen.html', icon:'meldingen' },
+    { naam:'WPI', naam_en:'WPI', pagina:'qhse-wpi.html', icon:'wpi' },
+    { naam:'MBB', naam_en:'MBB', pagina:'qhse-mbb.html', icon:'mbb' },
+    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-toolboxen.html', icon:'toolboxen' },
+    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-opleidingen.html', icon:'opleidingen' },
+    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-stoffen.html', icon:'stoffen' },
+    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-keuringen.html', icon:'keuringen' },
+    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-logboeken.html', icon:'logboeken' },
   ];
   const MODULES_BACKEND = [
-    { naam:'Compliance', pagina:'qhse-beheer-compliance.html', icon:'compliance', rollen:['admin','kam'] },
-    { naam:'Personeel', pagina:'qhse-beheer-personeel.html', icon:'personeel', rollen:['admin','hr','kam'] },
-    { naam:'Groepen', pagina:'qhse-beheer-groepen.html', icon:'groepen', rollen:['admin','hr'] },
-    { naam:'Toolboxen', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen', rollen:['admin','kam'] },
-    { naam:'Opleidingen', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen', rollen:['admin','kam'] },
-    { naam:'Stoffen', pagina:'qhse-beheer-stoffen.html', icon:'stoffen', rollen:['admin','kam'] },
-    { naam:'Keuringen', pagina:'qhse-beheer-keuringen.html', icon:'keuringen', rollen:['admin','kam','keurmeester'] },
-    { naam:'Logboeken', pagina:'qhse-beheer-logboeken.html', icon:'logboeken', rollen:['admin','kam'] },
-    { naam:'Instellingen', pagina:'qhse-beheer-instellingen.html', icon:'instellingen', rollen:['admin'] },
-    { naam:'Audittrail', pagina:'qhse-beheer-auditlog.html', icon:'auditlog', rollen:['admin','kam'] },
+    { naam:'Compliance', naam_en:'Compliance', pagina:'qhse-beheer-compliance.html', icon:'compliance', rollen:['admin','kam'] },
+    { naam:'Personeel', naam_en:'Personnel', pagina:'qhse-beheer-personeel.html', icon:'personeel', rollen:['admin','hr','kam'] },
+    { naam:'Groepen', naam_en:'Groups', pagina:'qhse-beheer-groepen.html', icon:'groepen', rollen:['admin','hr'] },
+    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen', rollen:['admin','kam'] },
+    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen', rollen:['admin','kam'] },
+    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-beheer-stoffen.html', icon:'stoffen', rollen:['admin','kam'] },
+    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-beheer-keuringen.html', icon:'keuringen', rollen:['admin','kam','keurmeester'] },
+    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-beheer-logboeken.html', icon:'logboeken', rollen:['admin','kam'] },
+    { naam:'Instellingen', naam_en:'Settings', pagina:'qhse-beheer-instellingen.html', icon:'instellingen', rollen:['admin'] },
+    { naam:'Audittrail', naam_en:'Audit trail', pagina:'qhse-beheer-auditlog.html', icon:'auditlog', rollen:['admin','kam'] },
   ];
 
   let huidigProfielRol = null;
 
+  let huidigeTaal = 'nl';
+
+  const VERTALINGEN = {
+    nl: {
+      voorJou: 'Voor jou', beheer: 'Beheer', dashboard: 'Dashboard', overzicht: 'Overzicht',
+      email: 'E-mailadres', wachtwoord: 'Wachtwoord', inloggen: 'Inloggen',
+      nogGeenAccount: 'Nog geen account? Account aanmaken', uitloggen: 'Uitloggen',
+      medewerkersApp: 'Medewerkers-app', beheerdersdashboard: 'Beheerdersdashboard',
+      inloggenMislukt: 'Inloggen mislukt: ', onverwachteFout: 'Onverwachte fout: ',
+      supabaseNietGeladen: 'Supabase niet geladen.'
+    },
+    en: {
+      voorJou: 'For you', beheer: 'Admin', dashboard: 'Dashboard', overzicht: 'Overview',
+      email: 'Email address', wachtwoord: 'Password', inloggen: 'Log in',
+      nogGeenAccount: "Don't have an account? Create one", uitloggen: 'Log out',
+      medewerkersApp: 'Employee app', beheerdersdashboard: 'Admin dashboard',
+      inloggenMislukt: 'Login failed: ', onverwachteFout: 'Unexpected error: ',
+      supabaseNietGeladen: 'Supabase failed to load.'
+    }
+  };
+
+  function t(sleutel){
+    return VERTALINGEN[huidigeTaal][sleutel] || VERTALINGEN.nl[sleutel] || sleutel;
+  }
+
+  function pasVertalingenToe(){
+    document.getElementById('lblEmail').textContent = t('email');
+    document.getElementById('lblWachtwoord').textContent = t('wachtwoord');
+    document.getElementById('btnInloggen').textContent = t('inloggen');
+    document.getElementById('lnkRegistreren').textContent = t('nogGeenAccount');
+    document.getElementById('railDashboardTekst').textContent = t('dashboard');
+    document.getElementById('btnFrontend').textContent = t('medewerkersApp');
+    document.getElementById('btnBackend').textContent = t('beheerdersdashboard');
+    document.getElementById('btnUitloggen').textContent = t('uitloggen');
+    document.getElementById('lblOverzicht').textContent = t('overzicht');
+    document.getElementById('lblDashboard').textContent = t('dashboard');
+  }
+
+  function moduleNaam(m){
+    return huidigeTaal === 'en' ? (m.naam_en || m.naam) : m.naam;
+  }
+
   function bouwRail(){
     const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
-    document.getElementById('railItemsFrontend').innerHTML = '<div class="rail-groep">Voor jou</div>' +
-      MODULES_FRONTEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
-    document.getElementById('railItemsBackend').innerHTML = '<div class="rail-groep">Beheer</div>' +
-      toegestaneBackend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${m.naam}</div>`).join('');
+    document.getElementById('railItemsFrontend').innerHTML = `<div class="rail-groep">${t('voorJou')}</div>` +
+      MODULES_FRONTEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}</div>`).join('');
+    document.getElementById('railItemsBackend').innerHTML = `<div class="rail-groep">${t('beheer')}</div>` +
+      toegestaneBackend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}</div>`).join('');
   }
 
   function bouwTegels(lijst){
@@ -237,7 +279,7 @@
         <div class="tegel-icon" style="background:${KLEUREN[i % KLEUREN.length]}22; color:${KLEUREN[i % KLEUREN.length]}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>
         </div>
-        <div class="tegel-naam">${m.naam}</div>
+        <div class="tegel-naam">${moduleNaam(m)}</div>
       </div>
     `).join('');
   }
@@ -296,7 +338,7 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
 
     if(profiel.rol === 'extern'){
@@ -305,6 +347,10 @@
     }
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
+
+    const { data: org } = await supabaseClient.from('organisaties').select('taal').eq('id', profiel.organisatie_id).single();
+    huidigeTaal = (org && org.taal === 'en') ? 'en' : 'nl';
+    pasVertalingenToe();
 
     const volledigeNaam = profiel.voornaam + ' ' + profiel.achternaam;
     document.getElementById('avatarInitialen').textContent = initialen(volledigeNaam);

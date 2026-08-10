@@ -21,6 +21,9 @@
   .whoami{ font-size:12.5px; color:var(--text-soft); }
   button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
   button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tabs{ display:flex; gap:8px; }
+  .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
   button.ghost{ background:transparent; }
   input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
   label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
@@ -101,6 +104,17 @@
     </div>
     <div class="fout verborgen" id="huisstijlFout"></div>
     <div class="melding verborgen" id="huisstijlMelding"></div>
+  </div>
+
+  <div class="eyebrow">Voertaal</div>
+  <div class="card">
+    <div class="meta" style="margin-bottom:10px">Bepaalt de taal van het systeem voor iedereen binnen jouw organisatie. Wat mensen zelf invullen (meldingen, documenten) verandert hierdoor niet — alleen de knoppen, labels en teksten van de app zelf.</div>
+    <div class="tabs">
+      <div class="tab" id="taalNl" onclick="kiesTaal('nl')">🇳🇱 Nederlands</div>
+      <div class="tab" id="taalEn" onclick="kiesTaal('en')">🇬🇧 English</div>
+    </div>
+    <div class="fout verborgen" id="taalFout" style="margin-top:12px"></div>
+    <div class="melding verborgen" id="taalMelding" style="margin-top:12px"></div>
   </div>
 
   <div class="eyebrow">Streefaantallen</div>
@@ -234,6 +248,8 @@
     huidigeOrganisatie = org;
     document.getElementById('bedrijfsnaam').value = org.naam || '';
     document.getElementById('appNaam').value = org.app_naam || '';
+    document.getElementById('taalNl').classList.toggle('actief', (org.taal || 'nl') === 'nl');
+    document.getElementById('taalEn').classList.toggle('actief', org.taal === 'en');
     document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
     document.getElementById('streefMbb').value = org.mbb_streefaantal_per_jaar ?? 4;
     const dagSelect = document.getElementById('boekjaarDag');
@@ -316,6 +332,19 @@
     const { error } = await supabaseClient.from('keuringscategorieen').delete().eq('id', id);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await ververCategorieen();
+  }
+
+  async function kiesTaal(taal){
+    const foutEl = document.getElementById('taalFout');
+    const meldingEl = document.getElementById('taalMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    const { error } = await supabaseClient.from('organisaties').update({ taal }).eq('id', huidigeOrganisatie.id);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    huidigeOrganisatie.taal = taal;
+    document.getElementById('taalNl').classList.toggle('actief', taal === 'nl');
+    document.getElementById('taalEn').classList.toggle('actief', taal === 'en');
+    meldingEl.textContent = taal === 'nl' ? '✓ Voertaal ingesteld op Nederlands.' : '✓ Language set to English.';
+    meldingEl.classList.remove('verborgen');
   }
 
   async function opslaanHuisstijl(){
