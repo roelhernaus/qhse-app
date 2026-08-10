@@ -319,14 +319,15 @@
         <label style="margin-top:0">Uniek ID</label>
         <input type="text" id="nmUniekId" placeholder="Het nummer dat op het middel staat">
         <label>Categorie</label>
-        <select id="nmCategorie" onchange="ververTypeSuggesties('nm')">
+        <select id="nmCategorie" onchange="ververTypeOpties('nm')">
           <option value="">— geen categorie —</option>
           ${(categorieen||[]).map(c => `<option value="${c.naam}" data-id="${c.id}">${c.naam}</option>`).join('')}
         </select>
         <label>Type</label>
-        <input type="text" id="nmType" list="nmTypeSuggesties" placeholder="Bijv. Hoogwerker, Steiger, Boormachine">
-        <datalist id="nmTypeSuggesties"></datalist>
-        <div class="meta" style="margin-top:4px">Kies bij voorkeur een bestaand type (via de suggesties) — alleen dan werkt de checklist-koppeling. Een nieuw type kan ook, maar heeft dan nog geen checklist.</div>
+        <select id="nmType" disabled onchange="typeGewijzigd('nm')">
+          <option value="">— kies eerst een categorie —</option>
+        </select>
+        <div class="meta" id="nmTypeUitleg" style="margin-top:4px"></div>
         <label>Herkomst</label>
         <select id="nmHerkomst">
           <option value="eigen">Eigen</option>
@@ -341,14 +342,40 @@
     `;
   }
 
-  async function ververTypeSuggesties(prefix){
+  async function ververTypeOpties(prefix, voorkeurWaarde){
     const catSelect = document.getElementById(prefix + 'Categorie');
     const optie = catSelect.options[catSelect.selectedIndex];
     const categorieId = optie ? optie.dataset.id : null;
-    const datalist = document.getElementById(prefix + 'TypeSuggesties');
-    if(!categorieId){ datalist.innerHTML = ''; return; }
+    const typeSelect = document.getElementById(prefix + 'Type');
+    const uitlegEl = document.getElementById(prefix + 'TypeUitleg');
+    const huidigeWaarde = voorkeurWaarde !== undefined ? voorkeurWaarde : typeSelect.value;
+
+    if(!categorieId){
+      typeSelect.disabled = true;
+      typeSelect.innerHTML = '<option value="">— kies eerst een categorie —</option>';
+      if(uitlegEl) uitlegEl.textContent = '';
+      return;
+    }
     const { data: typen } = await supabaseClient.from('arbeidsmiddel_typen').select('naam').eq('keuringscategorie_id', categorieId).order('naam');
-    datalist.innerHTML = (typen||[]).map(t => `<option value="${t.naam}">`).join('');
+    typeSelect.disabled = false;
+    typeSelect.innerHTML = '<option value="">— geen type —</option>' +
+      (typen||[]).map(t => `<option value="${t.naam}" ${t.naam===huidigeWaarde?'selected':''}>${t.naam}</option>`).join('') +
+      `<option value="__nieuw__">+ Nieuw type toevoegen…</option>`;
+    if(uitlegEl) uitlegEl.textContent = (typen||[]).length ? 'Alleen een type uit deze lijst geeft toegang tot de bijbehorende checklist.' : 'Nog geen typen voor deze categorie — voeg er eerst een toe via Keuringen → Checklists, of kies hieronder "Nieuw type toevoegen".';
+  }
+
+  async function typeGewijzigd(prefix){
+    const typeSelect = document.getElementById(prefix + 'Type');
+    if(typeSelect.value !== '__nieuw__') return;
+    const catSelect = document.getElementById(prefix + 'Categorie');
+    const optie = catSelect.options[catSelect.selectedIndex];
+    const categorieId = optie ? optie.dataset.id : null;
+    const nieuweNaam = prompt('Naam van het nieuwe type:');
+    if(!nieuweNaam || !nieuweNaam.trim()){ typeSelect.value = ''; return; }
+    const { error } = await supabaseClient.from('arbeidsmiddel_typen').insert({ organisatie_id: huidigProfiel.organisatie_id, keuringscategorie_id: categorieId, naam: nieuweNaam.trim() });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); typeSelect.value = ''; return; }
+    await ververTypeOpties(prefix);
+    typeSelect.value = nieuweNaam.trim();
   }
 
   async function opslaanNieuwMiddel(){
@@ -373,7 +400,8 @@
     scherm = 'middel';
     vastleggenModus = 'upload';
     await render();
-    if(document.getElementById('bewCategorie')) ververTypeSuggesties('bew');
+    const { data: middel } = await supabaseClient.from('arbeidsmiddelen').select('type').eq('id', id).single();
+    if(document.getElementById('bewCategorie')) await ververTypeOpties('bew', middel ? middel.type : '');
   }
 
   async function renderMiddel(){
@@ -466,13 +494,15 @@
         <label style="margin-top:0">Uniek ID</label>
         <input type="text" id="bewUniekId" value="${m.uniek_id}">
         <label>Categorie</label>
-        <select id="bewCategorie" onchange="ververTypeSuggesties('bew')">
+        <select id="bewCategorie" onchange="ververTypeOpties('bew')">
           <option value="">— geen categorie —</option>
           ${(categorieen||[]).map(c => `<option value="${c.naam}" data-id="${c.id}" ${m.categorie===c.naam?'selected':''}>${c.naam}</option>`).join('')}
         </select>
         <label>Type</label>
-        <input type="text" id="bewType" list="bewTypeSuggesties" value="${m.type || ''}">
-        <datalist id="bewTypeSuggesties"></datalist>
+        <select id="bewType" disabled onchange="typeGewijzigd('bew')">
+          <option value="">— kies eerst een categorie —</option>
+        </select>
+        <div class="meta" id="bewTypeUitleg" style="margin-top:4px"></div>
         <label>Herkomst</label>
         <select id="bewHerkomst">
           <option value="eigen" ${m.herkomst==='eigen'?'selected':''}>Eigen</option>
