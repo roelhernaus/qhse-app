@@ -270,18 +270,18 @@
       foutEl.classList.remove('verborgen');
       return;
     }
-    laatsteResultaat = { score, geslaagd };
+    laatsteResultaat = { score, geslaagd, goed, benodigdAantal, totaal: vragen.length };
     scherm = 'resultaat';
     await render();
   }
 
   function renderResultaat(){
-    const { score, geslaagd } = laatsteResultaat;
+    const { score, geslaagd, benodigdAantal, totaal } = laatsteResultaat;
     return `
       <div class="card resultaat">
         <div class="meta">${geslaagd ? 'Geslaagd!' : 'Helaas, niet gehaald'}</div>
         <div class="score" style="color:${geslaagd ? 'var(--green)' : 'var(--red)'}">${score}%</div>
-        <div class="meta">Slaagdrempel: ${WI_SLAAGPERCENTAGE}%</div>
+        <div class="meta">Slaagdrempel: ${benodigdAantal} van de ${totaal} goed of ${WI_SLAAGPERCENTAGE}%</div>
         <button class="primary" style="margin-top:20px" onclick="scherm='lijst'; render();">${geslaagd ? 'Terug naar overzicht' : 'Terug — probeer het later opnieuw'}</button>
       </div>
     `;
