@@ -93,6 +93,7 @@
   let scherm = 'lijst'; // 'lijst' | 'middel' | 'aanvraagDetail'
   let actiefId = null;
   let checklistCategorieId = null;
+  let checklistTypeId = null;
   let zelfRegistrerenAntwoorden = [];
   let vastleggenModus = 'upload'; // 'upload' | 'checklist'
   let actiefAanvraagId = null;
@@ -150,6 +151,7 @@
     else if(scherm === 'nieuw') inhoudHtml = await renderNieuwMiddel();
     else if(scherm === 'aanvraagDetail') inhoudHtml = await renderAanvraagDetail();
     else if(scherm === 'checklistCategorie') inhoudHtml = await renderChecklistCategorie();
+    else if(scherm === 'checklistType') inhoudHtml = await renderChecklistType();
     else if(scherm === 'zelfRegistreren') inhoudHtml = await renderZelfRegistreren();
     else if(tabActief === 'register') inhoudHtml = await renderRegister();
     else if(tabActief === 'checklists') inhoudHtml = await renderChecklists();
@@ -160,18 +162,18 @@
   async function renderChecklists(){
     const { data: categorieen, error } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
     if(error) return '<div class="fout">Kon categorieën niet laden: ' + error.message + '</div>';
-    const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('keuringscategorie_id');
+    const { data: typen } = await supabaseClient.from('arbeidsmiddel_typen').select('id, keuringscategorie_id');
     const aantalPerCategorie = {};
-    (vragen||[]).forEach(v => { aantalPerCategorie[v.keuringscategorie_id] = (aantalPerCategorie[v.keuringscategorie_id]||0) + 1; });
+    (typen||[]).forEach(t => { aantalPerCategorie[t.keuringscategorie_id] = (aantalPerCategorie[t.keuringscategorie_id]||0) + 1; });
     const rows = (categorieen||[]).map(c => `
       <div class="card klikbaar" onclick="openChecklistCategorie('${c.id}')">
         <div class="row">
           <b>${c.naam}</b>
-          <span class="meta">${aantalPerCategorie[c.id] || 0} vragen</span>
+          <span class="meta">${aantalPerCategorie[c.id] || 0} typen</span>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen categorieën (beheer die via Instellingen).</div>';
     return `
-      <div class="meta" style="margin-bottom:16px">Stel per keuringscategorie de vragenlijst in die een keurmeester met een geldige aanwijzing zelf kan invullen bij het registreren van een keuring. Baseer de vragen op de geldende norm voor die categorie.</div>
+      <div class="meta" style="margin-bottom:16px">Checklists zijn ingedeeld per categorie én per type arbeidsmiddel binnen die categorie — een boormachine heeft een andere checklist dan een hamer, ook al vallen ze onder dezelfde categorie.</div>
       ${rows}
     `;
   }
@@ -184,15 +186,57 @@
 
   async function renderChecklistCategorie(){
     const { data: categorie } = await supabaseClient.from('keuringscategorieen').select('*').eq('id', checklistCategorieId).single();
-    const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('keuringscategorie_id', checklistCategorieId).order('volgorde');
+    const { data: typen } = await supabaseClient.from('arbeidsmiddel_typen').select('*').eq('keuringscategorie_id', checklistCategorieId).order('naam');
+    const typeIds = (typen||[]).map(t=>t.id);
+    let aantalVragen = {};
+    if(typeIds.length){
+      const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('arbeidsmiddel_type_id').in('arbeidsmiddel_type_id', typeIds);
+      (vragen||[]).forEach(v => { aantalVragen[v.arbeidsmiddel_type_id] = (aantalVragen[v.arbeidsmiddel_type_id]||0) + 1; });
+    }
+    const rows = (typen||[]).map(t => `
+      <div class="card klikbaar" onclick="openChecklistType('${t.id}')">
+        <div class="row">
+          <span>${t.naam}</span>
+          <span class="meta">${aantalVragen[t.id] || 0} vragen</span>
+        </div>
+      </div>`).join('') || '<div class="meta">Nog geen typen binnen deze categorie.</div>';
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="tabActief='checklists'; scherm='lijst'; render();">← Terug naar checklists</button>
+      <div class="eyebrow" style="margin-top:0">Typen — ${categorie ? categorie.naam : ''}</div>
+      ${rows}
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Nieuw type binnen deze categorie</label>
+        <input type="text" id="atNieuwType" placeholder="Bijv. 'Boormachine', 'Ladder (enkel)', 'Trap'">
+        <button class="ghost" style="margin-top:10px" onclick="voegArbeidsmiddelTypeToe()">+ Toevoegen</button>
+      </div>
+    `;
+  }
+
+  async function voegArbeidsmiddelTypeToe(){
+    const naam = document.getElementById('atNieuwType').value.trim();
+    if(!naam) return;
+    const { error } = await supabaseClient.from('arbeidsmiddel_typen').insert({ organisatie_id: huidigProfiel.organisatie_id, keuringscategorie_id: checklistCategorieId, naam });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function openChecklistType(id){
+    checklistTypeId = id;
+    scherm = 'checklistType';
+    await render();
+  }
+
+  async function renderChecklistType(){
+    const { data: type } = await supabaseClient.from('arbeidsmiddel_typen').select('*').eq('id', checklistTypeId).single();
+    const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('arbeidsmiddel_type_id', checklistTypeId).order('volgorde');
     const rows = (vragen||[]).map((v,i) => `
       <div class="card row">
         <span>${i+1}. ${v.vraag}</span>
         <button class="ghost" onclick="verwijderChecklistVraag('${v.id}')">Verwijderen</button>
-      </div>`).join('') || '<div class="meta">Nog geen vragen voor deze categorie.</div>';
+      </div>`).join('') || '<div class="meta">Nog geen vragen voor dit type.</div>';
     return `
-      <button class="ghost" style="margin-bottom:14px" onclick="tabActief='checklists'; scherm='lijst'; render();">← Terug naar checklists</button>
-      <div class="eyebrow" style="margin-top:0">Checklist — ${categorie ? categorie.naam : ''}</div>
+      <button class="ghost" style="margin-bottom:14px" onclick="openChecklistCategorie('${type.keuringscategorie_id}')">← Terug naar typen</button>
+      <div class="eyebrow" style="margin-top:0">Checklist — ${type ? type.naam : ''}</div>
       ${rows}
       <div class="card" style="margin-top:12px">
         <label style="margin-top:0">Nieuwe vraag/controlepunt</label>
@@ -205,9 +249,9 @@
   async function voegChecklistVraagToe(){
     const vraag = document.getElementById('ccvNieuweVraag').value.trim();
     if(!vraag) return;
-    const { data: bestaande } = await supabaseClient.from('keuring_checklist_vragen').select('volgorde').eq('keuringscategorie_id', checklistCategorieId).order('volgorde', { ascending:false }).limit(1);
+    const { data: bestaande } = await supabaseClient.from('keuring_checklist_vragen').select('volgorde').eq('arbeidsmiddel_type_id', checklistTypeId).order('volgorde', { ascending:false }).limit(1);
     const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
-    const { error } = await supabaseClient.from('keuring_checklist_vragen').insert({ organisatie_id: huidigProfiel.organisatie_id, keuringscategorie_id: checklistCategorieId, vraag, volgorde });
+    const { error } = await supabaseClient.from('keuring_checklist_vragen').insert({ organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_type_id: checklistTypeId, vraag, volgorde });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
     await render();
   }
@@ -251,13 +295,15 @@
       <div class="card">
         <label style="margin-top:0">Uniek ID</label>
         <input type="text" id="nmUniekId" placeholder="Het nummer dat op het middel staat">
-        <label>Type</label>
-        <input type="text" id="nmType" placeholder="Bijv. Hoogwerker, Steiger, Boormachine">
         <label>Categorie</label>
-        <select id="nmCategorie">
+        <select id="nmCategorie" onchange="ververTypeSuggesties('nm')">
           <option value="">— geen categorie —</option>
-          ${(categorieen||[]).map(c => `<option value="${c.naam}">${c.naam}</option>`).join('')}
+          ${(categorieen||[]).map(c => `<option value="${c.naam}" data-id="${c.id}">${c.naam}</option>`).join('')}
         </select>
+        <label>Type</label>
+        <input type="text" id="nmType" list="nmTypeSuggesties" placeholder="Bijv. Hoogwerker, Steiger, Boormachine">
+        <datalist id="nmTypeSuggesties"></datalist>
+        <div class="meta" style="margin-top:4px">Kies bij voorkeur een bestaand type (via de suggesties) — alleen dan werkt de checklist-koppeling. Een nieuw type kan ook, maar heeft dan nog geen checklist.</div>
         <label>Herkomst</label>
         <select id="nmHerkomst">
           <option value="eigen">Eigen</option>
@@ -270,6 +316,16 @@
         <div class="fout verborgen" id="nmFout"></div>
       </div>
     `;
+  }
+
+  async function ververTypeSuggesties(prefix){
+    const catSelect = document.getElementById(prefix + 'Categorie');
+    const optie = catSelect.options[catSelect.selectedIndex];
+    const categorieId = optie ? optie.dataset.id : null;
+    const datalist = document.getElementById(prefix + 'TypeSuggesties');
+    if(!categorieId){ datalist.innerHTML = ''; return; }
+    const { data: typen } = await supabaseClient.from('arbeidsmiddel_typen').select('naam').eq('keuringscategorie_id', categorieId).order('naam');
+    datalist.innerHTML = (typen||[]).map(t => `<option value="${t.naam}">`).join('');
   }
 
   async function opslaanNieuwMiddel(){
@@ -294,6 +350,7 @@
     scherm = 'middel';
     vastleggenModus = 'upload';
     await render();
+    if(document.getElementById('bewCategorie')) ververTypeSuggesties('bew');
   }
 
   async function renderMiddel(){
@@ -313,7 +370,7 @@
         ${k.reden ? `<div class="meta">Reden: ${k.reden}</div>` : ''}
         ${k.volgende_keuring ? `<div class="meta">Volgende keuring: ${new Date(k.volgende_keuring).toLocaleDateString('nl-NL')}</div>` : ''}
         <div class="row" style="margin-top:8px">
-          ${k.rapport_pad ? `<button class="ghost" onclick="bekijkRapport('${k.rapport_pad}')">📄 Rapport bekijken</button>` : (k.checklist_antwoorden ? `<button class="ghost" onclick="printChecklistRapport('${k.id}')">📋 Checklist-rapport bekijken</button>` : `<span class="meta" style="color:var(--red)">Geen rapport gekoppeld</span>`)}
+          ${k.rapport_pad ? `<button class="ghost" onclick="bekijkRapport('${k.rapport_pad}')">📄 Extern keuringsrapport bekijken</button>` : (k.checklist_antwoorden ? `<button class="ghost" onclick="printChecklistRapport('${k.id}')">📋 Intern keuringsrapport bekijken</button>` : `<span class="meta" style="color:var(--red)">Geen rapport gekoppeld</span>`)}
           <button class="ghost" onclick="verwijderKeuring('${k.id}')">Verwijderen</button>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen keuringen vastgelegd.</div>';
@@ -322,21 +379,24 @@
       || (huidigProfiel.rol === 'keurmeester' && m.categorie && (huidigProfiel.keuringsbevoegdheden||[]).includes(m.categorie));
 
     let magZelfRegistreren = false;
-    let categorieId = null;
-    if(magVastleggen && m.categorie){
+    let typeId = null;
+    if(magVastleggen && m.categorie && m.type){
       const catRij = (categorieen||[]).find(c => c.naam === m.categorie);
-      categorieId = catRij ? catRij.id : null;
-      if(categorieId){
-        const { data: checklistVragen } = await supabaseClient.from('keuring_checklist_vragen').select('id').eq('keuringscategorie_id', categorieId).limit(1);
-        const heeftChecklist = !!(checklistVragen && checklistVragen.length);
-        if(heeftChecklist){
-          if(['admin','kam'].includes(huidigProfiel.rol)){
-            magZelfRegistreren = true;
-          } else {
-            const vandaag = new Date().toISOString().slice(0,10);
-            const { data: geldigeAanwijzing } = await supabaseClient
-              .from('aanwijzingen').select('id, geldig_tot').eq('profiel_id', huidigProfiel.id).eq('keuringscategorie_id', categorieId);
-            magZelfRegistreren = (geldigeAanwijzing||[]).some(a => !a.geldig_tot || a.geldig_tot >= vandaag);
+      if(catRij){
+        const { data: typeRij } = await supabaseClient.from('arbeidsmiddel_typen').select('id').eq('keuringscategorie_id', catRij.id).eq('naam', m.type).maybeSingle();
+        typeId = typeRij ? typeRij.id : null;
+        if(typeId){
+          const { data: checklistVragen } = await supabaseClient.from('keuring_checklist_vragen').select('id').eq('arbeidsmiddel_type_id', typeId).limit(1);
+          const heeftChecklist = !!(checklistVragen && checklistVragen.length);
+          if(heeftChecklist){
+            if(['admin','kam'].includes(huidigProfiel.rol)){
+              magZelfRegistreren = true;
+            } else {
+              const vandaag = new Date().toISOString().slice(0,10);
+              const { data: geldigeAanwijzing } = await supabaseClient
+                .from('aanwijzingen').select('id, geldig_tot').eq('profiel_id', huidigProfiel.id).eq('keuringscategorie_id', catRij.id);
+              magZelfRegistreren = (geldigeAanwijzing||[]).some(a => !a.geldig_tot || a.geldig_tot >= vandaag);
+            }
           }
         }
       }
@@ -346,8 +406,8 @@
       <div class="card">
         ${magZelfRegistreren ? `
           <div class="tabs" style="margin-bottom:14px">
-            <div class="tab ${vastleggenModus==='upload'?'actief':''}" onclick="vastleggenModus='upload'; render();">Rapport uploaden</div>
-            <div class="tab ${vastleggenModus==='checklist'?'actief':''}" onclick="vastleggenModus='checklist'; startZelfRegistreren('${categorieId}'); render();">Zelf registreren (checklist)</div>
+            <div class="tab ${vastleggenModus==='upload'?'actief':''}" onclick="vastleggenModus='upload'; render();">Extern keuringsrapport</div>
+            <div class="tab ${vastleggenModus==='checklist'?'actief':''}" onclick="vastleggenModus='checklist'; startZelfRegistreren('${typeId}'); render();">Intern keuringsrapport</div>
           </div>
         ` : ''}
         ${vastleggenModus === 'checklist' && magZelfRegistreren ? renderChecklistInvulBlok() : `
@@ -362,7 +422,7 @@
         </div>
         <label>Volgende keuring (datum)</label>
         <input type="date" id="nkVolgende">
-        <label>Keuringsrapport (PDF, verplicht)</label>
+        <label>Extern keuringsrapport (PDF, verplicht)</label>
         <input type="file" accept="application/pdf" id="nkRapport">
         <div class="row" style="margin-top:14px">
           <span></span>
@@ -382,13 +442,14 @@
       <div class="card">
         <label style="margin-top:0">Uniek ID</label>
         <input type="text" id="bewUniekId" value="${m.uniek_id}">
-        <label>Type</label>
-        <input type="text" id="bewType" value="${m.type || ''}">
         <label>Categorie</label>
-        <select id="bewCategorie">
+        <select id="bewCategorie" onchange="ververTypeSuggesties('bew')">
           <option value="">— geen categorie —</option>
-          ${(categorieen||[]).map(c => `<option value="${c.naam}" ${m.categorie===c.naam?'selected':''}>${c.naam}</option>`).join('')}
+          ${(categorieen||[]).map(c => `<option value="${c.naam}" data-id="${c.id}" ${m.categorie===c.naam?'selected':''}>${c.naam}</option>`).join('')}
         </select>
+        <label>Type</label>
+        <input type="text" id="bewType" list="bewTypeSuggesties" value="${m.type || ''}">
+        <datalist id="bewTypeSuggesties"></datalist>
         <label>Herkomst</label>
         <select id="bewHerkomst">
           <option value="eigen" ${m.herkomst==='eigen'?'selected':''}>Eigen</option>
@@ -474,9 +535,9 @@
     window.open(data.signedUrl, '_blank');
   }
 
-  async function startZelfRegistreren(categorieId){
-    const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('keuringscategorie_id', categorieId).order('volgorde');
-    zelfRegistrerenAntwoorden = (vragen||[]).map(v => ({ vraag_id: v.id, vraag: v.vraag, antwoord: 'goed' }));
+  async function startZelfRegistreren(typeId){
+    const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('arbeidsmiddel_type_id', typeId).order('volgorde');
+    zelfRegistrerenAntwoorden = (vragen||[]).map(v => ({ vraag_id: v.id, vraag: v.vraag, antwoord: 'ja', opmerking: '' }));
   }
 
   function renderChecklistInvulBlok(){
@@ -484,10 +545,11 @@
       <div class="card" style="margin-bottom:8px">
         <div style="font-size:13px">${a.vraag}</div>
         <div class="tabs" style="margin-top:8px">
-          <div class="tab ${a.antwoord==='goed'?'actief':''}" onclick="zelfRegistrerenAntwoorden[${i}].antwoord='goed'; render();">✓ Goed</div>
-          <div class="tab ${a.antwoord==='afwijking'?'actief':''}" onclick="zelfRegistrerenAntwoorden[${i}].antwoord='afwijking'; render();">✗ Afwijking</div>
+          <div class="tab ${a.antwoord==='ja'?'actief':''}" onclick="zelfRegistrerenAntwoorden[${i}].antwoord='ja'; render();">✓ Ja</div>
+          <div class="tab ${a.antwoord==='nee'?'actief':''}" onclick="zelfRegistrerenAntwoorden[${i}].antwoord='nee'; render();">✗ Nee</div>
+          <div class="tab ${a.antwoord==='nvt'?'actief':''}" onclick="zelfRegistrerenAntwoorden[${i}].antwoord='nvt'; render();">— N.v.t.</div>
         </div>
-        ${a.antwoord==='afwijking' ? `<input type="text" placeholder="Toelichting op de afwijking" value="${a.toelichting||''}" oninput="zelfRegistrerenAntwoorden[${i}].toelichting=this.value" style="margin-top:8px">` : ''}
+        <input type="text" placeholder="Opmerking (optioneel)" value="${a.opmerking||''}" oninput="zelfRegistrerenAntwoorden[${i}].opmerking=this.value" style="margin-top:8px">
       </div>
     `).join('');
 
@@ -509,9 +571,9 @@
     const foutEl = document.getElementById('crFout');
     foutEl.classList.add('verborgen');
 
-    const afwijkingen = zelfRegistrerenAntwoorden.filter(a => a.antwoord === 'afwijking');
+    const afwijkingen = zelfRegistrerenAntwoorden.filter(a => a.antwoord === 'nee');
     const resultaat = afwijkingen.length ? 'afgekeurd' : 'goedgekeurd';
-    const reden = afwijkingen.length ? afwijkingen.map(a => a.vraag + (a.toelichting ? ' — ' + a.toelichting : '')).join('; ') : null;
+    const reden = afwijkingen.length ? afwijkingen.map(a => a.vraag + (a.opmerking ? ' — ' + a.opmerking : '')).join('; ') : null;
 
     const { error } = await supabaseClient.from('keuringen').insert({
       arbeidsmiddel_id: actiefId, keurmeester_id: huidigProfiel.id, resultaat, reden, volgende_keuring,
@@ -531,16 +593,17 @@
 
     const venster = window.open('', '_blank');
     venster.document.write(`
-      <html><head><title>Keuringsrapport — ${m.uniek_id}</title>
+      <html><head><title>Intern keuringsrapport — ${m.uniek_id}</title>
       <style>
         body{ font-family: Arial, sans-serif; padding:30px; color:#1c1d1b; }
         h1{ font-size:20px; border-bottom:3px solid #2f6f5e; padding-bottom:8px; }
         table{ border-collapse:collapse; margin-top:6px; width:100%; }
         td{ padding:5px 10px 5px 0; font-size:12px; vertical-align:top; border-bottom:1px solid #eee; }
-        .goed{ color:#1c9468; font-weight:600; }
-        .afwijking{ color:#c0392b; font-weight:600; }
+        .ja{ color:#1c9468; font-weight:600; }
+        .nee{ color:#c0392b; font-weight:600; }
+        .nvt{ color:#999; font-weight:600; }
       </style></head><body>
-        <h1>Keuringsrapport — ${m.uniek_id} (${m.type || ''})</h1>
+        <h1>Intern keuringsrapport — ${m.uniek_id} (${m.type || ''})</h1>
         <table>
           <tr><td><b>Categorie</b></td><td>${m.categorie || '—'}</td></tr>
           <tr><td><b>Datum</b></td><td>${new Date(k.datum).toLocaleDateString('nl-NL')}</td></tr>
@@ -550,7 +613,7 @@
         </table>
         <h2 style="font-size:14px; margin-top:20px;">Checklist</h2>
         <table>
-          ${(k.checklist_antwoorden||[]).map(a => `<tr><td>${a.vraag}</td><td class="${a.antwoord==='goed'?'goed':'afwijking'}">${a.antwoord==='goed'?'✓ Goed':'✗ ' + (a.toelichting||'Afwijking')}</td></tr>`).join('')}
+          ${(k.checklist_antwoorden||[]).map(a => `<tr><td>${a.vraag}</td><td class="${a.antwoord}">${a.antwoord==='ja'?'✓ Ja':(a.antwoord==='nee'?'✗ Nee':'— N.v.t.')}</td><td>${a.opmerking||''}</td></tr>`).join('')}
         </table>
         <p style="margin-top:30px; font-size:10px; color:#999;">Digitaal keuringsformulier, gegenereerd op ${new Date().toLocaleDateString('nl-NL')}.</p>
         <script>window.print();<\/script>
