@@ -113,14 +113,76 @@
     const inhoud = document.getElementById('inhoud');
     inhoud.innerHTML = '<div class="meta">Laden…</div>';
 
-    const [ontvangen, gemaakt] = await Promise.all([verzamelOntvangen(), verzamelGemaakt()]);
+    const [ontvangen, gemaakt, teDoen] = await Promise.all([verzamelOntvangen(), verzamelGemaakt(), verzamelTeDoen()]);
 
     inhoud.innerHTML = `
-      <div class="eyebrow" style="margin-top:0">Ontvangen (${ontvangen.length})</div>
+      <div class="eyebrow" style="margin-top:0">Te doen (${teDoen.length})</div>
+      ${teDoen.map(renderTeDoenKaart).join('') || '<div class="meta" style="margin-bottom:16px">Niets te doen — helemaal bij.</div>'}
+      <div class="eyebrow" style="margin-top:22px">Ontvangen (${ontvangen.length})</div>
       ${ontvangen.map(renderActieKaart).join('') || '<div class="meta" style="margin-bottom:16px">Niets openstaand voor jou.</div>'}
       <div class="eyebrow" style="margin-top:22px">Door mij gemaakt (${gemaakt.length})</div>
       ${gemaakt.map(renderActieKaart).join('') || '<div class="meta">Je hebt nog niets aangemaakt.</div>'}
     `;
+  }
+
+  async function ledenVanGroep(groepId){
+    const { data } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', groepId);
+    return (data||[]).map(l=>l.profiel_id);
+  }
+  async function bentIkToegewezen(koppelingType, koppelingGroepId){
+    if(koppelingType === 'iedereen') return true;
+    if(!koppelingGroepId) return false;
+    const ledenIds = await ledenVanGroep(koppelingGroepId);
+    return ledenIds.includes(huidigProfiel.id);
+  }
+
+  async function verzamelTeDoen(){
+    const items = [];
+
+    const { data: opleidingen } = await supabaseClient.from('opleidingen').select('*, opleiding_soorten(naam, is_alert)');
+    for(const o of (opleidingen||[])){
+      if(!(await bentIkToegewezen(o.koppeling_type, o.koppeling_groep_id))) continue;
+      const { data: versie } = await supabaseClient.from('opleiding_versies').select('id').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
+      if(!versie) continue;
+      const { data: laatstePoging } = await supabaseClient
+        .from('opleiding_pogingen').select('*').eq('versie_id', versie.id).eq('profiel_id', huidigProfiel.id).eq('geslaagd', true)
+        .order('afgerond_op', { ascending:false }).limit(1).maybeSingle();
+      let openstaand = !laatstePoging;
+      if(laatstePoging){
+        const vervalDatum = new Date(laatstePoging.afgerond_op);
+        vervalDatum.setMonth(vervalDatum.getMonth() + o.interval_maanden);
+        openstaand = vervalDatum < new Date();
+      }
+      if(openstaand){
+        const isAlert = o.opleiding_soorten && o.opleiding_soorten.is_alert;
+        items.push({ bron: isAlert ? 'Alert' : 'Opleiding', isAlert, omschrijving: o.naam, pagina:'qhse-opleidingen.html' });
+      }
+    }
+
+    const { data: toolboxen } = await supabaseClient.from('toolbox_bibliotheek').select('*').eq('verplicht', true);
+    for(const tb of (toolboxen||[])){
+      if(!(await bentIkToegewezen(tb.koppeling_type, tb.koppeling_groep_id))) continue;
+      const { data: sessies } = await supabaseClient.from('toolbox_sessies').select('id').eq('toolbox_id', tb.id);
+      const sessieIds = (sessies||[]).map(s=>s.id);
+      let gedaan = false;
+      if(sessieIds.length){
+        const { data: deelname } = await supabaseClient.from('toolbox_deelnemers').select('id').in('sessie_id', sessieIds).eq('profiel_id', huidigProfiel.id).limit(1);
+        gedaan = !!(deelname && deelname.length);
+      }
+      if(!gedaan) items.push({ bron:'Toolbox', isAlert:false, omschrijving: tb.naam, pagina:'qhse-toolboxen.html' });
+    }
+
+    return items;
+  }
+
+  function renderTeDoenKaart(item){
+    return `<div class="card klikbaar" onclick="window.location.href='${item.pagina}'" style="${item.isAlert ? 'border-color:var(--red);' : ''} cursor:pointer">
+      <div class="row">
+        <span class="tag" style="${item.isAlert ? 'background:var(--red-dim); color:var(--red);' : ''}">${item.isAlert ? '⚠️ ' : ''}${item.bron}</span>
+        <span class="meta">→</span>
+      </div>
+      <div style="font-size:13px; margin-top:8px">${item.omschrijving}</div>
+    </div>`;
   }
 
   async function verzamelOntvangen(){

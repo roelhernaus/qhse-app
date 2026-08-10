@@ -63,6 +63,15 @@
     border-left:3px solid transparent;
   }
   .rail-item svg{ width:17px; height:17px; flex-shrink:0; opacity:.85; }
+  .rail-item .badge{
+    margin-left:auto; background:#e5484d; color:#fff; font-size:10.5px; font-weight:700;
+    padding:1px 6px; border-radius:20px; min-width:16px; text-align:center;
+  }
+  .rail-item .badge.alert{ background:#e5484d; font-size:12px; padding:0 6px; }
+  .tegel .tegel-badge{
+    position:absolute; top:12px; right:12px; background:#e5484d; color:#fff; font-size:11px; font-weight:700;
+    padding:2px 7px; border-radius:20px;
+  }
   .rail-item:hover{ background:rgba(255,255,255,0.05); }
   .rail-item.actief{ background:rgba(255,255,255,0.09); color:#fff; border-left-color:var(--accent); }
   .rail-item.actief svg{ opacity:1; }
@@ -83,7 +92,7 @@
   #dashboardScherm h2{ font-family:'Oswald',sans-serif; font-weight:600; font-size:26px; margin-bottom:22px; }
   .tegel-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:18px; }
   .tegel{
-    background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:26px;
+    position:relative; background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:26px;
     cursor:pointer; transition:.12s ease; display:flex; flex-direction:column; gap:16px; min-height:130px;
   }
   .tegel:hover{ border-color:var(--accent); transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,0.08); }
@@ -273,12 +282,17 @@
     return naam.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   }
 
+  let huidigProfielId = null;
+  let openstaandeActiesAantal = 0;
+  let heeftOpenstaandeAlert = false;
+
   async function initShell(){
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('voornaam, achternaam, rol').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfielId = profiel.id;
 
     const volledigeNaam = profiel.voornaam + ' ' + profiel.achternaam;
     document.getElementById('avatarInitialen').textContent = initialen(volledigeNaam);
@@ -294,6 +308,92 @@
     }
 
     kiesOmgeving('frontend');
+    berekenOpenstaandeActies();
+  }
+
+  async function ledenVanGroepShell(groepId){
+    const { data } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', groepId);
+    return (data||[]).map(l=>l.profiel_id);
+  }
+  async function bentIkToegewezenShell(koppelingType, koppelingGroepId){
+    if(koppelingType === 'iedereen') return true;
+    if(!koppelingGroepId) return false;
+    const ledenIds = await ledenVanGroepShell(koppelingGroepId);
+    return ledenIds.includes(huidigProfielId);
+  }
+
+  async function berekenOpenstaandeActies(){
+    let aantal = 0;
+    let alert = false;
+
+    const { data: meldingen } = await supabaseClient.from('meldingen_view').select('id').eq('actiehouder_id', huidigProfielId).neq('status','Afgehandeld');
+    aantal += (meldingen||[]).length;
+
+    const { data: shiftActies } = await supabaseClient.from('logboek_regels').select('id').eq('toegewezen_aan', huidigProfielId).eq('afgerond', false);
+    aantal += (shiftActies||[]).length;
+
+    const { data: vergaderActies } = await supabaseClient.from('logboek_acties').select('id').eq('toegewezen_aan', huidigProfielId).eq('afgerond', false);
+    aantal += (vergaderActies||[]).length;
+
+    const { data: opleidingen } = await supabaseClient.from('opleidingen').select('*, opleiding_soorten(is_alert)');
+    for(const o of (opleidingen||[])){
+      if(!(await bentIkToegewezenShell(o.koppeling_type, o.koppeling_groep_id))) continue;
+      const { data: versie } = await supabaseClient.from('opleiding_versies').select('id').eq('opleiding_id', o.id).eq('actief', true).maybeSingle();
+      if(!versie) continue;
+      const { data: laatstePoging } = await supabaseClient
+        .from('opleiding_pogingen').select('afgerond_op').eq('versie_id', versie.id).eq('profiel_id', huidigProfielId).eq('geslaagd', true)
+        .order('afgerond_op', { ascending:false }).limit(1).maybeSingle();
+      let openstaand = !laatstePoging;
+      if(laatstePoging){
+        const vervalDatum = new Date(laatstePoging.afgerond_op);
+        vervalDatum.setMonth(vervalDatum.getMonth() + o.interval_maanden);
+        openstaand = vervalDatum < new Date();
+      }
+      if(openstaand){
+        aantal++;
+        if(o.opleiding_soorten && o.opleiding_soorten.is_alert) alert = true;
+      }
+    }
+
+    const { data: toolboxen } = await supabaseClient.from('toolbox_bibliotheek').select('*').eq('verplicht', true);
+    for(const tb of (toolboxen||[])){
+      if(!(await bentIkToegewezenShell(tb.koppeling_type, tb.koppeling_groep_id))) continue;
+      const { data: sessies } = await supabaseClient.from('toolbox_sessies').select('id').eq('toolbox_id', tb.id);
+      const sessieIds = (sessies||[]).map(s=>s.id);
+      let gedaan = false;
+      if(sessieIds.length){
+        const { data: deelname } = await supabaseClient.from('toolbox_deelnemers').select('id').in('sessie_id', sessieIds).eq('profiel_id', huidigProfielId).limit(1);
+        gedaan = !!(deelname && deelname.length);
+      }
+      if(!gedaan) aantal++;
+    }
+
+    openstaandeActiesAantal = aantal;
+    heeftOpenstaandeAlert = alert;
+    pasActiesBadgeToe();
+  }
+
+  function pasActiesBadgeToe(){
+    const railItem = document.querySelector('.rail-item[data-pagina="qhse-acties.html"]');
+    if(railItem){
+      let badge = railItem.querySelector('.badge');
+      if(badge) badge.remove();
+      if(heeftOpenstaandeAlert){
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge alert">!</span>`);
+      } else if(openstaandeActiesAantal > 0){
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge">${openstaandeActiesAantal}</span>`);
+      }
+    }
+    const tegel = document.querySelector('.tegel[onclick*="qhse-acties.html"]');
+    if(tegel){
+      let badge = tegel.querySelector('.tegel-badge');
+      if(badge) badge.remove();
+      if(heeftOpenstaandeAlert){
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge">!</span>`);
+      } else if(openstaandeActiesAantal > 0){
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge">${openstaandeActiesAantal}</span>`);
+      }
+    }
   }
 
   function kiesOmgeving(omgeving){
@@ -303,6 +403,7 @@
     document.getElementById('railItemsBackend').classList.toggle('verborgen', omgeving!=='backend');
     bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : MODULES_BACKEND);
     toonDashboard();
+    pasActiesBadgeToe();
   }
 
   function ga(el){
