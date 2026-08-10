@@ -144,6 +144,9 @@
     const inhoud = document.getElementById('inhoud');
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
     else if(scherm === 'bewerken') inhoud.innerHTML = await renderBewerken();
+    else if(scherm === 'nieuweAanwijzing') inhoud.innerHTML = await renderNieuweAanwijzing();
+    else if(scherm === 'soorten') inhoud.innerHTML = await renderAanwijzingSoorten();
+    else if(scherm === 'nieuweAanwijzingSoort') inhoud.innerHTML = renderNieuweAanwijzingSoort();
   }
 
   async function renderLijst(){
@@ -183,6 +186,24 @@
       <span class="tag klikbaar ${bewBevoegdheden.includes(c.naam) ? 'bevoegd' : ''}" id="bev-${c.id}" onclick="toggleBevoegdheid('${c.naam.replace(/'/g,"\\'")}', 'bev-${c.id}')" style="cursor:pointer; margin:3px 4px 0 0; ${bewBevoegdheden.includes(c.naam) ? 'background:var(--accent-dim); color:var(--accent);' : ''}">${c.naam}</span>
     `).join('') || '<div class="meta">Nog geen categorieën aangemaakt (via Instellingen).</div>';
 
+    const { data: aanwijzingen } = await supabaseClient
+      .from('aanwijzingen').select('*, aanwijzing_soorten(naam), keuringscategorieen(naam)').eq('profiel_id', actiefProfielId).order('aangemaakt_op', { ascending:false });
+    const vandaag = new Date().toISOString().slice(0,10);
+    const aanwijzingenHtml = (aanwijzingen||[]).map(a => {
+      const verlopen = a.geldig_tot && a.geldig_tot < vandaag;
+      return `
+        <div class="card">
+          <div class="row">
+            <span><b>${a.aanwijzing_soorten ? a.aanwijzing_soorten.naam : '—'}</b>${a.keuringscategorieen ? ' · ' + a.keuringscategorieen.naam : ''}</span>
+            ${a.geldig_tot ? `<span class="tag" style="${verlopen ? 'background:var(--red-dim); color:var(--red);' : 'background:var(--green-dim); color:var(--green);'}">${verlopen ? 'Verlopen' : 'Geldig'} tot ${new Date(a.geldig_tot).toLocaleDateString('nl-NL')}</span>` : `<span class="tag" style="background:var(--green-dim); color:var(--green);">Verloopt niet</span>`}
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button class="ghost" onclick="bekijkAanwijzing('${a.pdf_pad}')">📄 Certificaat bekijken</button>
+            <button class="ghost" onclick="verwijderAanwijzing('${a.id}')">Verwijderen</button>
+          </div>
+        </div>`;
+    }).join('') || '<div class="meta">Nog geen aanwijzingen vastgelegd.</div>';
+
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
@@ -215,6 +236,13 @@
         <div class="fout verborgen" id="bewFout"></div>
         <div class="melding verborgen" id="bewMelding"></div>
       </div>
+
+      <div class="row" style="margin-top:22px">
+        <div class="eyebrow" style="margin-top:0">Aanwijzingen &amp; certificaten</div>
+        <button class="ghost" onclick="scherm='soorten'; render();">Soorten beheren</button>
+      </div>
+      <button class="primary" style="margin-bottom:10px" onclick="nieuweAanwijzing()">+ Aanwijzing toevoegen</button>
+      ${aanwijzingenHtml}
     `;
   }
 
@@ -258,6 +286,157 @@
     }
     meldingEl.textContent = '✓ Opgeslagen.';
     meldingEl.classList.remove('verborgen');
+  }
+
+  async function nieuweAanwijzing(){
+    scherm = 'nieuweAanwijzing';
+    await render();
+  }
+
+  async function renderNieuweAanwijzing(){
+    const { data: soorten } = await supabaseClient.from('aanwijzing_soorten').select('*').order('naam');
+    const { data: categorieen } = await supabaseClient.from('keuringscategorieen').select('*').order('naam');
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='bewerken'; render();">← Terug</button>
+      <div class="card">
+        <label style="margin-top:0">Soort</label>
+        <select id="naSoort" onchange="toggleCategorieVeld()">
+          <option value="">— kies een soort —</option>
+          ${(soorten||[]).map(s => `<option value="${s.id}" data-vereist-categorie="${s.vereist_categorie}">${s.naam}</option>`).join('')}
+        </select>
+        <div id="naCategorieBlok" class="verborgen">
+          <label>Keuringscategorie</label>
+          <select id="naCategorie">
+            <option value="">— kies een categorie —</option>
+            ${(categorieen||[]).map(c => `<option value="${c.id}">${c.naam}</option>`).join('')}
+          </select>
+        </div>
+        <label>Certificaat (PDF, tweezijdig ondertekend)</label>
+        <input type="file" accept="application/pdf" id="naPdf">
+        <label>Geldig tot (leeg = verloopt niet)</label>
+        <input type="date" id="naGeldigTot">
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuweAanwijzing()">Vastleggen</button>
+        </div>
+        <div class="fout verborgen" id="naFout"></div>
+      </div>
+    `;
+  }
+
+  function toggleCategorieVeld(){
+    const select = document.getElementById('naSoort');
+    const optie = select.options[select.selectedIndex];
+    const vereist = optie && optie.dataset.vereistCategorie === 'true';
+    document.getElementById('naCategorieBlok').classList.toggle('verborgen', !vereist);
+  }
+
+  async function opslaanNieuweAanwijzing(){
+    const soort_id = document.getElementById('naSoort').value;
+    const categorieVeld = document.getElementById('naCategorie');
+    const keuringscategorie_id = (categorieVeld && !document.getElementById('naCategorieBlok').classList.contains('verborgen')) ? (categorieVeld.value || null) : null;
+    const file = document.getElementById('naPdf').files[0];
+    const geldig_tot = document.getElementById('naGeldigTot').value || null;
+    const foutEl = document.getElementById('naFout');
+    foutEl.classList.add('verborgen');
+
+    if(!soort_id){ foutEl.textContent = 'Kies eerst een soort.'; foutEl.classList.remove('verborgen'); return; }
+    if(!file){ foutEl.textContent = 'Een certificaat (PDF) is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const soortOptie = document.getElementById('naSoort');
+    if(soortOptie.options[soortOptie.selectedIndex].dataset.vereistCategorie === 'true' && !keuringscategorie_id){
+      foutEl.textContent = 'Kies een keuringscategorie voor deze soort.'; foutEl.classList.remove('verborgen'); return;
+    }
+
+    const pad = `${huidigProfiel.organisatie_id}/${actiefProfielId}-${Date.now()}.pdf`;
+    const { error: uploadFout } = await supabaseClient.storage.from('aanwijzingen').upload(pad, file);
+    if(uploadFout){ foutEl.textContent = 'Upload mislukt: ' + uploadFout.message; foutEl.classList.remove('verborgen'); return; }
+
+    const { error } = await supabaseClient.from('aanwijzingen').insert({
+      organisatie_id: huidigProfiel.organisatie_id, profiel_id: actiefProfielId, soort_id, keuringscategorie_id,
+      pdf_pad: pad, geldig_tot, aangemaakt_door: huidigProfiel.id
+    });
+    if(error){ foutEl.textContent = 'Vastleggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    scherm = 'bewerken';
+    await render();
+  }
+
+  async function bekijkAanwijzing(pad){
+    const { data, error } = await supabaseClient.storage.from('aanwijzingen').createSignedUrl(pad, 300);
+    if(error){ alert('Kon certificaat niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
+  async function verwijderAanwijzing(id){
+    if(!confirm('Deze aanwijzing verwijderen? Dit wordt vastgelegd in de audittrail.')) return;
+    const { error } = await supabaseClient.from('aanwijzingen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function renderAanwijzingSoorten(){
+    const { data: soorten, error } = await supabaseClient.from('aanwijzing_soorten').select('*').order('naam');
+    if(error) return '<div class="fout">Kon soorten niet laden: ' + error.message + '</div>';
+    const rows = (soorten||[]).map(s => `
+      <div class="card row">
+        <div>
+          <b>${s.naam}</b>
+          ${s.vereist_categorie ? '<span class="tag" style="margin-left:6px">Per keuringscategorie</span>' : ''}
+          ${s.kan_verlopen ? '<span class="tag" style="margin-left:6px">Kan verlopen</span>' : '<span class="tag" style="margin-left:6px; background:var(--green-dim); color:var(--green);">Verloopt nooit</span>'}
+        </div>
+        <button class="ghost" onclick="verwijderAanwijzingSoort('${s.id}')">Verwijderen</button>
+      </div>`).join('') || '<div class="meta">Nog geen soorten.</div>';
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='bewerken'; render();">← Terug</button>
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(soorten||[]).length} soorten</span>
+        <button class="primary" onclick="scherm='nieuweAanwijzingSoort'; render();">+ Nieuwe soort</button>
+      </div>
+      ${rows}
+    `;
+  }
+
+  function verwijderAanwijzingSoort(id){
+    if(!confirm('Deze soort verwijderen? Dit kan niet als er nog aanwijzingen van deze soort bestaan.')) return;
+    supabaseClient.from('aanwijzing_soorten').delete().eq('id', id).then(({ error }) => {
+      if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+      render();
+    });
+  }
+
+  function renderNieuweAanwijzingSoort(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='soorten'; render();">← Terug naar soorten</button>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="nasNaam" placeholder="Bijv. 'VCA', 'Hoogwerkercertificaat'">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="nasVereistCategorie" style="width:auto">
+          <span>Vereist een keuze uit de keuringscategorieën (zoals bij Keurmeester)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
+          <input type="checkbox" id="nasKanVerlopen" style="width:auto" checked>
+          <span>Kan verlopen (vervaldatum invulbaar)</span>
+        </label>
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuweAanwijzingSoort()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="nasFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanNieuweAanwijzingSoort(){
+    const naam = document.getElementById('nasNaam').value.trim();
+    const vereist_categorie = document.getElementById('nasVereistCategorie').checked;
+    const kan_verlopen = document.getElementById('nasKanVerlopen').checked;
+    const foutEl = document.getElementById('nasFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.from('aanwijzing_soorten').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, vereist_categorie, kan_verlopen });
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    scherm = 'soorten';
+    await render();
   }
 
   if(supabaseClient){
