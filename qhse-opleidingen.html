@@ -276,10 +276,11 @@
   }
 
   function renderResultaat(){
-    const { score, geslaagd, benodigdAantal, totaal } = laatsteResultaat;
+    const { score, geslaagd, goed, benodigdAantal, totaal } = laatsteResultaat;
     return `
       <div class="card resultaat">
         <div class="meta">${geslaagd ? 'Geslaagd!' : 'Helaas, niet gehaald'}</div>
+        <div class="meta">${goed} van de ${totaal} vragen goed</div>
         <div class="score" style="color:${geslaagd ? 'var(--green)' : 'var(--red)'}">${score}%</div>
         <div class="meta">Slaagdrempel: ${benodigdAantal} van de ${totaal} goed of ${WI_SLAAGPERCENTAGE}%</div>
         <button class="primary" style="margin-top:20px" onclick="scherm='lijst'; render();">${geslaagd ? 'Terug naar overzicht' : 'Terug — probeer het later opnieuw'}</button>
