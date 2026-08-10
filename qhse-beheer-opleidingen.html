@@ -136,6 +136,7 @@
     else if(scherm === 'opleiding') inhoud.innerHTML = await renderOpleiding();
     else if(scherm === 'nieuweVersie') inhoud.innerHTML = renderNieuweVersie();
     else if(scherm === 'soorten') inhoud.innerHTML = await renderSoorten();
+    else if(scherm === 'nieuweSoort') inhoud.innerHTML = renderNieuweSoort();
   }
 
   async function renderSoorten(){
@@ -157,12 +158,40 @@
     `;
   }
 
-  async function nieuweSoort(){
-    const naam = prompt('Naam van de nieuwe soort:');
-    if(!naam) return;
-    const is_alert = confirm('Is dit een "Alert"-soort? (altijd rood, altijd verplicht voor iedereen)\n\nOK = ja, dit is een alert\nAnnuleren = nee, gewone soort');
+  function nieuweSoort(){
+    scherm = 'nieuweSoort';
+    render();
+  }
+
+  function renderNieuweSoort(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='soorten'; render();">← Terug naar soorten</button>
+      <div class="card">
+        <label style="margin-top:0">Naam van de soort</label>
+        <input type="text" id="nsNaam" placeholder="Bijv. 'SOP', 'Richtlijn', 'IT'">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="nsIsAlert" style="width:auto">
+          <span>Dit is een "Alert"-soort</span>
+        </label>
+        <div class="meta" style="margin-top:4px">Een Alert wordt altijd rood en opvallend getoond, en is altijd verplicht voor iedereen — koppeling aan een specifieke groep is dan niet mogelijk.</div>
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuweSoort()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="nsFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanNieuweSoort(){
+    const naam = document.getElementById('nsNaam').value.trim();
+    const is_alert = document.getElementById('nsIsAlert').checked;
+    const foutEl = document.getElementById('nsFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
     const { error } = await supabaseClient.from('opleiding_soorten').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, is_alert });
-    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    scherm = 'soorten';
     await render();
   }
 

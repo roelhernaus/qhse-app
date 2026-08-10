@@ -143,6 +143,7 @@
       </div>`;
     let inhoudHtml = '';
     if(scherm === 'logboek') inhoudHtml = await renderLogboek();
+    else if(scherm === 'nieuwLogboek') inhoudHtml = renderNieuwLogboek();
     else if(tabActief === 'logboeken') inhoudHtml = await renderLogboeken();
     else inhoudHtml = await renderProcessen();
     inhoud.innerHTML = tabsHtml + inhoudHtml;
@@ -167,14 +168,51 @@
     `;
   }
 
-  async function nieuwLogboek(){
-    const naam = prompt('Naam van het logboek:');
-    if(!naam) return;
-    const soort = confirm('Wordt dit een Vergaderingsnotule?\n\nOK = Vergaderingsnotule\nAnnuleren = Shiftverloop') ? 'vergadernotule' : 'shiftverloop';
+  function nieuwLogboek(){
+    scherm = 'nieuwLogboek';
+    render();
+  }
+
+  function renderNieuwLogboek(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam van het logboek</label>
+        <input type="text" id="nlNaam" placeholder="Bijv. 'Wekelijks KAM-overleg' of 'Ploeg A dagverloop'">
+        <label>Soort</label>
+        <div class="tabs">
+          <div class="tab" id="nlSoortNotule" onclick="kiesSoortNieuwLogboek('vergadernotule')">📝 Vergaderingsnotule</div>
+          <div class="tab" id="nlSoortShift" onclick="kiesSoortNieuwLogboek('shiftverloop')">🔄 Shiftverloop</div>
+        </div>
+        <div class="meta" style="margin-top:6px">Vergaderingsnotule: aanwezigen, verloop, afspraken en acties. Shiftverloop: doorlopende regels per ploeg/dienst, met optionele acties.</div>
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuwLogboek()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="nlFout"></div>
+      </div>
+    `;
+  }
+
+  let nieuwLogboekSoort = null;
+  function kiesSoortNieuwLogboek(soort){
+    nieuwLogboekSoort = soort;
+    document.getElementById('nlSoortNotule').classList.toggle('actief', soort==='vergadernotule');
+    document.getElementById('nlSoortShift').classList.toggle('actief', soort==='shiftverloop');
+  }
+
+  async function opslaanNieuwLogboek(){
+    const naam = document.getElementById('nlNaam').value.trim();
+    const foutEl = document.getElementById('nlFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    if(!nieuwLogboekSoort){ foutEl.textContent = 'Kies eerst een soort.'; foutEl.classList.remove('verborgen'); return; }
+
     const { data, error } = await supabaseClient
-      .from('logboeken').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort, koppeling_type: 'iedereen' })
+      .from('logboeken').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort: nieuwLogboekSoort, koppeling_type: 'iedereen' })
       .select().single();
-    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    nieuwLogboekSoort = null;
     actiefId = data.id;
     scherm = 'logboek';
     await render();

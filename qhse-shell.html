@@ -376,22 +376,22 @@
   function pasActiesBadgeToe(){
     const railItem = document.querySelector('.rail-item[data-pagina="qhse-acties.html"]');
     if(railItem){
-      let badge = railItem.querySelector('.badge');
-      if(badge) badge.remove();
+      railItem.querySelectorAll('.badge').forEach(b => b.remove());
+      if(openstaandeActiesAantal > 0){
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge">${openstaandeActiesAantal}</span>`);
+      }
       if(heeftOpenstaandeAlert){
         railItem.insertAdjacentHTML('beforeend', `<span class="badge alert">!</span>`);
-      } else if(openstaandeActiesAantal > 0){
-        railItem.insertAdjacentHTML('beforeend', `<span class="badge">${openstaandeActiesAantal}</span>`);
       }
     }
     const tegel = document.querySelector('.tegel[onclick*="qhse-acties.html"]');
     if(tegel){
-      let badge = tegel.querySelector('.tegel-badge');
-      if(badge) badge.remove();
+      tegel.querySelectorAll('.tegel-badge').forEach(b => b.remove());
+      if(openstaandeActiesAantal > 0){
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge" style="right:12px">${openstaandeActiesAantal}</span>`);
+      }
       if(heeftOpenstaandeAlert){
-        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge">!</span>`);
-      } else if(openstaandeActiesAantal > 0){
-        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge">${openstaandeActiesAantal}</span>`);
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge" style="right:${openstaandeActiesAantal > 0 ? '44px' : '12px'}; background:#e5484d;">!</span>`);
       }
     }
   }
