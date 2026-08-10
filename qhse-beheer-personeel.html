@@ -147,6 +147,7 @@
     else if(scherm === 'nieuweAanwijzing') inhoud.innerHTML = await renderNieuweAanwijzing();
     else if(scherm === 'soorten') inhoud.innerHTML = await renderAanwijzingSoorten();
     else if(scherm === 'nieuweAanwijzingSoort') inhoud.innerHTML = renderNieuweAanwijzingSoort();
+    else if(scherm === 'uitnodigingen') inhoud.innerHTML = await renderUitnodigingen();
   }
 
   async function renderLijst(){
@@ -166,7 +167,13 @@
           </div>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen medewerkers.</div>';
-    return `<div class="meta" style="margin-bottom:12px">${(profielen||[]).length} medewerkers</div>${rows}`;
+    return `
+      <div class="row" style="margin-bottom:12px">
+        <span class="meta">${(profielen||[]).length} medewerkers</span>
+        <button class="ghost" onclick="scherm='uitnodigingen'; render();">Externe uitnodigingen</button>
+      </div>
+      ${rows}
+    `;
   }
 
   async function openBewerken(id){
@@ -410,6 +417,67 @@
     const { error } = await supabaseClient.from('aanwijzing_soorten').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, vereist_categorie, kan_verlopen });
     if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     scherm = 'soorten';
+    await render();
+  }
+
+  async function renderUitnodigingen(){
+    const { data: uitnodigingen, error } = await supabaseClient
+      .from('extern_uitnodigingen').select('*').order('aangemaakt_op', { ascending:false });
+    if(error) return '<div class="fout">Kon uitnodigingen niet laden: ' + error.message + '</div>';
+    const gebruikersIds = (uitnodigingen||[]).map(u=>u.gebruikt_door).filter(Boolean);
+    let gebruikersMap = {};
+    if(gebruikersIds.length){
+      const { data: gebruikers } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', gebruikersIds);
+      (gebruikers||[]).forEach(g => { gebruikersMap[g.id] = g; });
+    }
+    const rows = (uitnodigingen||[]).map(u => {
+      const gebruiker = u.gebruikt_door ? gebruikersMap[u.gebruikt_door] : null;
+      return `
+      <div class="card">
+        <div class="row">
+          <span style="font-family:monospace; font-size:14px; font-weight:700; letter-spacing:.05em">${u.code}</span>
+          ${u.gebruikt ? `<span class="tag" style="background:var(--green-dim); color:var(--green);">Gebruikt</span>` : `<span class="tag">Nog open</span>`}
+        </div>
+        ${u.omschrijving ? `<div class="meta" style="margin-top:6px">${u.omschrijving}</div>` : ''}
+        ${gebruiker ? `<div class="meta" style="margin-top:4px">Gebruikt door ${gebruiker.voornaam} ${gebruiker.achternaam}</div>` : ''}
+        ${!u.gebruikt ? `<button class="ghost" style="margin-top:8px" onclick="verwijderUitnodiging('${u.id}')">Verwijderen</button>` : ''}
+      </div>`;
+    }).join('') || '<div class="meta">Nog geen uitnodigingen.</div>';
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="meta" style="margin-bottom:16px">Genereer een code en deel die (bijv. per mail of WhatsApp) met een onderaannemer of klant. Met deze code kan diegene zelf een account aanmaken via de registratiepagina, met alleen toegang tot het indienen en volgen van eigen meldingen.</div>
+      <div class="card">
+        <label style="margin-top:0">Omschrijving (optioneel, bijv. bedrijfsnaam)</label>
+        <input type="text" id="uiOmschrijving" placeholder="Bijv. 'Onderaannemer De Vries B.V.'">
+        <button class="primary" style="margin-top:10px" onclick="nieuweUitnodiging()">+ Code genereren</button>
+      </div>
+      <div class="eyebrow" style="margin-top:20px">Codes</div>
+      ${rows}
+    `;
+  }
+
+  function genereerCode(){
+    const tekens = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for(let i=0; i<8; i++) code += tekens[Math.floor(Math.random()*tekens.length)];
+    return code.slice(0,4) + '-' + code.slice(4);
+  }
+
+  async function nieuweUitnodiging(){
+    const omschrijving = document.getElementById('uiOmschrijving').value.trim() || null;
+    const code = genereerCode();
+    const { error } = await supabaseClient.from('extern_uitnodigingen').insert({
+      organisatie_id: huidigProfiel.organisatie_id, code, omschrijving, aangemaakt_door: huidigProfiel.id
+    });
+    if(error){ alert('Aanmaken mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderUitnodiging(id){
+    if(!confirm('Deze ongebruikte code verwijderen?')) return;
+    const { error } = await supabaseClient.from('extern_uitnodigingen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await render();
   }
 

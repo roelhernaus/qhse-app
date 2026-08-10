@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QHSE — Extern account aanmaken</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:400px; margin:0 auto; padding:60px 20px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:22px; margin:0 0 18px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:22px; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:14px; border-radius:8px; margin-top:12px; line-height:1.5; }
+  .verborgen{ display:none; }
+  .terug{ margin-top:16px; display:block; text-align:center; font-size:12.5px; color:var(--text-soft); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1>Extern account aanmaken</h1>
+
+  <div class="card" id="formulierKaart">
+    <label>Uitnodigingscode</label>
+    <input type="text" id="regCode" placeholder="Bijv. ABCD-1234" style="text-transform:uppercase">
+    <label>Voornaam</label>
+    <input type="text" id="regVoornaam">
+    <label>Achternaam</label>
+    <input type="text" id="regAchternaam">
+    <label>E-mailadres</label>
+    <input type="email" id="regEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="regWachtwoord" placeholder="Minimaal 6 tekens">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="registreer()">Account aanmaken</button>
+    <div class="fout verborgen" id="regFout"></div>
+  </div>
+
+  <div class="card verborgen" id="succesKaart">
+    <div class="melding">
+      ✓ Je account is aangemaakt! Je kunt nu inloggen om meldingen in te dienen.
+    </div>
+    <a href="qhse-extern.html" class="terug">→ Naar het inlogscherm</a>
+  </div>
+
+  <a href="qhse-extern.html" class="terug">← Ik heb al een account</a>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  async function registreer(){
+    const code = document.getElementById('regCode').value.trim().toUpperCase();
+    const voornaam = document.getElementById('regVoornaam').value.trim();
+    const achternaam = document.getElementById('regAchternaam').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const wachtwoord = document.getElementById('regWachtwoord').value;
+    const foutEl = document.getElementById('regFout');
+    foutEl.classList.add('verborgen');
+
+    if(!code){ foutEl.textContent = 'Uitnodigingscode is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    if(!voornaam || !achternaam){ foutEl.textContent = 'Voor- en achternaam zijn verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    if(!email){ foutEl.textContent = 'E-mailadres is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    if(!wachtwoord || wachtwoord.length < 6){ foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; foutEl.classList.remove('verborgen'); return; }
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+
+    try{
+      const { error } = await supabaseClient.auth.signUp({
+        email, password: wachtwoord,
+        options: { data: { voornaam, achternaam, extern_code: code } }
+      });
+      if(error){
+        foutEl.textContent = error.message.includes('Ongeldige of al gebruikte')
+          ? 'Deze uitnodigingscode is ongeldig of al gebruikt.'
+          : 'Aanmaken mislukt: ' + error.message;
+        foutEl.classList.remove('verborgen');
+        return;
+      }
+      document.getElementById('formulierKaart').classList.add('verborgen');
+      document.getElementById('succesKaart').classList.remove('verborgen');
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+</script>
+</body>
+</html>
