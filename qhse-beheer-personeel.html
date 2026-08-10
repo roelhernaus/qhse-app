@@ -195,7 +195,7 @@
         <div class="card">
           <div class="row">
             <span><b>${a.aanwijzing_soorten ? a.aanwijzing_soorten.naam : '—'}</b>${a.keuringscategorieen ? ' · ' + a.keuringscategorieen.naam : ''}</span>
-            ${a.geldig_tot ? `<span class="tag" style="${verlopen ? 'background:var(--red-dim); color:var(--red);' : 'background:var(--green-dim); color:var(--green);'}">${verlopen ? 'Verlopen' : 'Geldig'} tot ${new Date(a.geldig_tot).toLocaleDateString('nl-NL')}</span>` : `<span class="tag" style="background:var(--green-dim); color:var(--green);">Verloopt niet</span>`}
+            ${a.geldig_tot ? `<span class="tag" style="${verlopen ? 'background:var(--red-dim); color:var(--red);' : 'background:var(--green-dim); color:var(--green);'}">${verlopen ? 'Verlopen sinds' : 'Geldig tot'} ${new Date(a.geldig_tot).toLocaleDateString('nl-NL')}</span>` : `<span class="tag" style="background:var(--green-dim); color:var(--green);">Verloopt niet</span>`}
           </div>
           <div class="row" style="margin-top:8px">
             <button class="ghost" onclick="bekijkAanwijzing('${a.pdf_pad}')">📄 Certificaat bekijken</button>
