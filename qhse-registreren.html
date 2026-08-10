@@ -36,6 +36,8 @@
   <h1>Account aanmaken</h1>
 
   <div class="card" id="formulierKaart">
+    <label>Uitnodigingscode</label>
+    <input type="text" id="regCode" placeholder="Van je leidinggevende of HR ontvangen" style="text-transform:uppercase">
     <label>Voornaam</label>
     <input type="text" id="regVoornaam">
     <label>Achternaam</label>
@@ -65,6 +67,7 @@
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
 
   async function registreer(){
+    const code = document.getElementById('regCode').value.trim().toUpperCase();
     const voornaam = document.getElementById('regVoornaam').value.trim();
     const achternaam = document.getElementById('regAchternaam').value.trim();
     const email = document.getElementById('regEmail').value.trim();
@@ -72,6 +75,7 @@
     const foutEl = document.getElementById('regFout');
     foutEl.classList.add('verborgen');
 
+    if(!code){ foutEl.textContent = 'Uitnodigingscode is verplicht.'; foutEl.classList.remove('verborgen'); return; }
     if(!voornaam || !achternaam){ foutEl.textContent = 'Voor- en achternaam zijn verplicht.'; foutEl.classList.remove('verborgen'); return; }
     if(!email){ foutEl.textContent = 'E-mailadres is verplicht.'; foutEl.classList.remove('verborgen'); return; }
     if(!wachtwoord || wachtwoord.length < 6){ foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; foutEl.classList.remove('verborgen'); return; }
@@ -80,9 +84,15 @@
     try{
       const { error } = await supabaseClient.auth.signUp({
         email, password: wachtwoord,
-        options: { data: { voornaam, achternaam } }
+        options: { data: { voornaam, achternaam, intern_code: code } }
       });
-      if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      if(error){
+        foutEl.textContent = error.message.includes('Ongeldige of al gebruikte')
+          ? 'Deze uitnodigingscode is ongeldig of al gebruikt.'
+          : 'Aanmaken mislukt: ' + error.message;
+        foutEl.classList.remove('verborgen');
+        return;
+      }
       document.getElementById('formulierKaart').classList.add('verborgen');
       document.getElementById('succesKaart').classList.remove('verborgen');
     }catch(e){
