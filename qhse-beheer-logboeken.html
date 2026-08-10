@@ -155,7 +155,7 @@
     const rows = (logboeken||[]).map(l => `
       <div class="card klikbaar" onclick="openLogboek('${l.id}')">
         <div class="row">
-          <div><b>${l.naam}</b> <span class="tag" style="margin-left:6px">${l.soort}</span></div>
+          <div><b>${l.naam}</b> <span class="tag" style="margin-left:6px">${soortLabel(l.soort)}</span></div>
           <span class="meta">${l.koppeling_type==='iedereen' ? 'Iedereen' : (l.groepen ? l.groepen.naam : 'Groep')}</span>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen logboeken.</div>';
@@ -181,10 +181,10 @@
         <input type="text" id="nlNaam" placeholder="Bijv. 'Wekelijks KAM-overleg' of 'Ploeg A dagverloop'">
         <label>Soort</label>
         <div class="tabs">
-          <div class="tab" id="nlSoortNotule" onclick="kiesSoortNieuwLogboek('vergadernotule')">📝 Vergaderingsnotule</div>
-          <div class="tab" id="nlSoortShift" onclick="kiesSoortNieuwLogboek('shiftverloop')">🔄 Shiftverloop</div>
+          <div class="tab" id="nlSoortNotule" onclick="kiesSoortNieuwLogboek('vergadernotule')">📝 Notule</div>
+          <div class="tab" id="nlSoortShift" onclick="kiesSoortNieuwLogboek('shiftverloop')">🔄 Logboek</div>
         </div>
-        <div class="meta" style="margin-top:6px">Vergaderingsnotule: aanwezigen, verloop, afspraken en acties. Shiftverloop: doorlopende regels per ploeg/dienst, met optionele acties.</div>
+        <div class="meta" style="margin-top:6px">Notule: aanwezigen, verloop, afspraken en acties. Logboek: doorlopende regels per ploeg/dienst/onderwerp, met optionele acties.</div>
         <div class="row" style="margin-top:16px">
           <span></span>
           <button class="primary" onclick="opslaanNieuwLogboek()">Aanmaken</button>
@@ -192,6 +192,10 @@
         <div class="fout verborgen" id="nlFout"></div>
       </div>
     `;
+  }
+
+  function soortLabel(soort){
+    return soort === 'vergadernotule' ? 'Notule' : (soort === 'shiftverloop' ? 'Logboek' : soort);
   }
 
   let nieuwLogboekSoort = null;
@@ -242,7 +246,7 @@
       <div class="card">
         <label style="margin-top:0">Naam</label>
         <input type="text" id="bewNaam" value="${l.naam}">
-        <div class="meta" style="margin-top:6px">Soort: ${l.soort} (kan niet meer gewijzigd worden)</div>
+        <div class="meta" style="margin-top:6px">Soort: ${soortLabel(l.soort)} (kan niet meer gewijzigd worden)</div>
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bewVerwijderen" style="width:auto" ${l.verwijderen_toegestaan?'checked':''}> Regels mogen verwijderd worden
         </label>

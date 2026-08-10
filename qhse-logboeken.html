@@ -131,7 +131,7 @@
       <div class="card klikbaar" onclick="openLogboek('${l.id}')">
         <div class="row">
           <b>${l.naam}</b>
-          <span class="tag">${l.soort === 'shiftverloop' ? 'Shiftverloop' : 'Vergaderingsnotule'}</span>
+          <span class="tag">${l.soort === 'shiftverloop' ? 'Logboek' : 'Notule'}</span>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen logboeken aan jou toegewezen.</div>';
     return rows;

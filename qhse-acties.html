@@ -195,13 +195,13 @@
     const { data: shiftActies } = await supabaseClient
       .from('logboek_regels').select('id, boodschap, afgerond, logboeken(naam)')
       .eq('toegewezen_aan', huidigProfiel.id).eq('afgerond', false);
-    (shiftActies||[]).forEach(r => items.push({ bron:'Shiftverloop', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:false, actieType:'shift', actieId:r.id }));
+    (shiftActies||[]).forEach(r => items.push({ bron:'Logboek', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:false, actieType:'shift', actieId:r.id }));
 
     const { data: vergaderActies } = await supabaseClient
       .from('logboek_acties').select('id, omschrijving, deadline, afgerond, logboek_regels(naam_vergadering, logboeken(naam))')
       .eq('toegewezen_aan', huidigProfiel.id).eq('afgerond', false);
     (vergaderActies||[]).forEach(a => items.push({
-      bron:'Vergaderingsnotule',
+      bron:'Notule',
       context: a.logboek_regels ? a.logboek_regels.naam_vergadering : '',
       omschrijving:a.omschrijving,
       deadline: a.deadline,
@@ -222,7 +222,7 @@
     const { data: shiftActies } = await supabaseClient
       .from('logboek_regels').select('id, boodschap, afgerond, toegewezen_aan, logboeken(naam)')
       .eq('invuller_id', huidigProfiel.id).not('toegewezen_aan', 'is', null);
-    (shiftActies||[]).forEach(r => items.push({ bron:'Shiftverloop', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:r.afgerond }));
+    (shiftActies||[]).forEach(r => items.push({ bron:'Logboek', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:r.afgerond }));
 
     const { data: regelsVanMij } = await supabaseClient
       .from('logboek_regels').select('id, naam_vergadering, logboeken(naam)').eq('invuller_id', huidigProfiel.id);
@@ -232,7 +232,7 @@
         .from('logboek_acties').select('id, omschrijving, deadline, afgerond, regel_id').in('regel_id', regelIds);
       (acties||[]).forEach(a => {
         const regel = (regelsVanMij||[]).find(r=>r.id===a.regel_id);
-        items.push({ bron:'Vergaderingsnotule', context: regel ? regel.naam_vergadering : '', omschrijving:a.omschrijving, deadline:a.deadline, afgerond:a.afgerond });
+        items.push({ bron:'Notule', context: regel ? regel.naam_vergadering : '', omschrijving:a.omschrijving, deadline:a.deadline, afgerond:a.afgerond });
       });
     }
 
