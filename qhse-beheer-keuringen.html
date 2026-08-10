@@ -123,7 +123,7 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, keuringsbevoegdheden').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
     document.getElementById('login-scherm').classList.add('verborgen');
@@ -426,29 +426,28 @@
         </div>
       </div>`).join('') || '<div class="meta">Nog geen keuringen vastgelegd.</div>';
 
+    const catRij = m.categorie ? (categorieen||[]).find(c => c.naam === m.categorie) : null;
+    let heeftGeldigeAanwijzing = false;
+    if(catRij && huidigProfiel.rol === 'keurmeester'){
+      const vandaag = new Date().toISOString().slice(0,10);
+      const { data: geldigeAanwijzing } = await supabaseClient
+        .from('aanwijzingen').select('id, geldig_tot').eq('profiel_id', huidigProfiel.id).eq('keuringscategorie_id', catRij.id);
+      heeftGeldigeAanwijzing = (geldigeAanwijzing||[]).some(a => !a.geldig_tot || a.geldig_tot >= vandaag);
+    }
+
     const magVastleggen = ['admin','kam'].includes(huidigProfiel.rol)
-      || (huidigProfiel.rol === 'keurmeester' && m.categorie && (huidigProfiel.keuringsbevoegdheden||[]).includes(m.categorie));
+      || (huidigProfiel.rol === 'keurmeester' && heeftGeldigeAanwijzing);
 
     let magZelfRegistreren = false;
     let typeId = null;
-    if(magVastleggen && m.categorie && m.type){
-      const catRij = (categorieen||[]).find(c => c.naam === m.categorie);
-      if(catRij){
-        const { data: typeRij } = await supabaseClient.from('arbeidsmiddel_typen').select('id').eq('keuringscategorie_id', catRij.id).eq('naam', m.type).maybeSingle();
-        typeId = typeRij ? typeRij.id : null;
-        if(typeId){
-          const { data: checklistVragen } = await supabaseClient.from('keuring_checklist_vragen').select('id').eq('arbeidsmiddel_type_id', typeId).limit(1);
-          const heeftChecklist = !!(checklistVragen && checklistVragen.length);
-          if(heeftChecklist){
-            if(['admin','kam'].includes(huidigProfiel.rol)){
-              magZelfRegistreren = true;
-            } else {
-              const vandaag = new Date().toISOString().slice(0,10);
-              const { data: geldigeAanwijzing } = await supabaseClient
-                .from('aanwijzingen').select('id, geldig_tot').eq('profiel_id', huidigProfiel.id).eq('keuringscategorie_id', catRij.id);
-              magZelfRegistreren = (geldigeAanwijzing||[]).some(a => !a.geldig_tot || a.geldig_tot >= vandaag);
-            }
-          }
+    if(magVastleggen && catRij && m.type){
+      const { data: typeRij } = await supabaseClient.from('arbeidsmiddel_typen').select('id').eq('keuringscategorie_id', catRij.id).eq('naam', m.type).maybeSingle();
+      typeId = typeRij ? typeRij.id : null;
+      if(typeId){
+        const { data: checklistVragen } = await supabaseClient.from('keuring_checklist_vragen').select('id').eq('arbeidsmiddel_type_id', typeId).limit(1);
+        const heeftChecklist = !!(checklistVragen && checklistVragen.length);
+        if(heeftChecklist){
+          magZelfRegistreren = ['admin','kam'].includes(huidigProfiel.rol) || heeftGeldigeAanwijzing;
         }
       }
     }
@@ -484,7 +483,7 @@
       </div>
     ` : `
       <div class="card">
-        <div class="meta">Je bent niet bevoegd om een keuring vast te leggen voor de categorie "${m.categorie || 'geen categorie'}". Vraag admin/HR om deze bevoegdheid toe te voegen via Personeel, of pas hieronder de categorie van dit arbeidsmiddel aan.</div>
+        <div class="meta">Je hebt geen geldige aanwijzing om een keuring vast te leggen voor de categorie "${m.categorie || 'geen categorie'}". Laat admin/HR een aanwijzing voor deze categorie vastleggen via Personeel, of pas hieronder de categorie van dit arbeidsmiddel aan.</div>
       </div>
     `;
 
