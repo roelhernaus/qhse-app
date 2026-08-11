@@ -62,7 +62,7 @@
   <div class="card">
     <b>Geen toegang</b>
     <p class="meta" style="margin-top:8px">Groepenbeheer is alleen voor Admin of HR.</p>
-    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+    <button class="ghost btn-uitloggen-lokaal" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
   </div>
 </div>
 
@@ -74,7 +74,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -85,6 +85,20 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    const verbergUitlogKnoppenLokaal = () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    };
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', verbergUitlogKnoppenLokaal);
+    } else {
+      verbergUitlogKnoppenLokaal();
+    }
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'groep' | 'nieuw'

@@ -123,9 +123,14 @@
   }catch(e){ console.error(e); }
 
   if(window.self !== window.top){
-    document.addEventListener('DOMContentLoaded', () => {
+    const verbergUitlogKnoppenLokaal = () => {
       document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
-    });
+    };
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', verbergUitlogKnoppenLokaal);
+    } else {
+      verbergUitlogKnoppenLokaal();
+    }
   }
 
   let huidigProfiel = null;

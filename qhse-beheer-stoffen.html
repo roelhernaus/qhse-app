@@ -94,9 +94,14 @@
   // niet via deze losse knop (die anders alleen dit venster resette, terwijl
   // de schil eromheen nergens van wist).
   if(window.self !== window.top){
-    document.addEventListener('DOMContentLoaded', () => {
+    const verbergUitlogKnoppenLokaal = () => {
       document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
-    });
+    };
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', verbergUitlogKnoppenLokaal);
+    } else {
+      verbergUitlogKnoppenLokaal();
+    }
   }
 
   let huidigProfiel = null;
