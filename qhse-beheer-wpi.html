@@ -245,7 +245,11 @@
     const vraagRows = (vragen||[]).map((v,i) => `
       <div class="card row">
         <span>${i+1}. ${v.tekst} ${v.kritiek ? '<span class="tag" style="margin-left:6px; background:var(--red-dim); color:var(--red);">⚠️ Kritiek</span>' : ''} ${v.type==='slecht/matig/goed' ? '<span class="tag" style="margin-left:6px">Slecht/Matig/Goed</span>' : ''} ${v.type==='open' ? '<span class="tag" style="margin-left:6px">Open vraag</span>' : ''} ${v.foto_optie ? '<span class="tag" style="margin-left:6px">📷 Foto optioneel</span>' : ''}</span>
-        <button class="ghost" onclick="verwijderVraag('${v.id}')">Verwijderen</button>
+        <div style="display:flex; gap:4px; flex-shrink:0">
+          <button class="ghost" style="padding:6px 10px" onclick="verplaatsVraag('${v.id}', -1)" ${i===0?'disabled':''}>↑</button>
+          <button class="ghost" style="padding:6px 10px" onclick="verplaatsVraag('${v.id}', 1)" ${i===(vragen||[]).length-1?'disabled':''}>↓</button>
+          <button class="ghost" onclick="verwijderVraag('${v.id}')">Verwijderen</button>
+        </div>
       </div>`).join('') || '<div class="meta">Nog geen vragen.</div>';
 
     return `
@@ -380,6 +384,19 @@ FOTO: Is er zichtbare schade aan het hekwerk?
     if(!confirm('Deze vraag verwijderen?')) return;
     const { error } = await supabaseClient.from('wpi_vragen').delete().eq('id', id);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verplaatsVraag(id, richting){
+    const { data: vragen } = await supabaseClient.from('wpi_vragen').select('*').eq('formulier_id', actiefFormulierId).order('volgorde');
+    if(!vragen) return;
+    const index = vragen.findIndex(v => v.id === id);
+    const nieuweIndex = index + richting;
+    if(index === -1 || nieuweIndex < 0 || nieuweIndex >= vragen.length) return;
+    const huidige = vragen[index];
+    const buur = vragen[nieuweIndex];
+    await supabaseClient.from('wpi_vragen').update({ volgorde: buur.volgorde }).eq('id', huidige.id);
+    await supabaseClient.from('wpi_vragen').update({ volgorde: huidige.volgorde }).eq('id', buur.id);
     await render();
   }
 

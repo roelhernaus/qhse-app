@@ -71,7 +71,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -84,6 +84,15 @@
   const WI_MIN_LEESTIJD = 10; // seconden
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'intro' | 'quiz' | 'resultaat'
@@ -185,10 +194,19 @@
       .from('opleiding_vragen').select('*').eq('versie_id', versie.id).order('volgorde');
     if(vragenFout){ alert('Kon vragen niet laden: ' + vragenFout.message); return; }
 
+    let getoondeVragen = vragen || [];
+    if(opleiding.vragen_shuffelen){
+      getoondeVragen = [...getoondeVragen];
+      for(let i = getoondeVragen.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [getoondeVragen[i], getoondeVragen[j]] = [getoondeVragen[j], getoondeVragen[i]];
+      }
+    }
+
     const { data: eerdereGeslaagd } = await supabaseClient
       .from('opleiding_pogingen').select('id').eq('versie_id', versie.id).eq('profiel_id', huidigProfiel.id).eq('geslaagd', true).limit(1);
 
-    actieveOpleiding = { opleiding, versie, vragen: vragen||[], isNieuweVersie: !(eerdereGeslaagd && eerdereGeslaagd.length) };
+    actieveOpleiding = { opleiding, versie, vragen: getoondeVragen, isNieuweVersie: !(eerdereGeslaagd && eerdereGeslaagd.length) };
     antwoorden = {};
     leesTimerVerstreken = false;
     scherm = 'intro';
