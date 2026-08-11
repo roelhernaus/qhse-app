@@ -90,7 +90,7 @@
     <div class="meta" id="mFotoStatus" style="margin-top:4px"></div>
     <img id="mFotoPreview" style="display:none; width:100%; max-width:220px; border-radius:8px; margin-top:8px;">
 
-    <button class="primary" onclick="verstuurMelding()">Melding versturen</button>
+    <button class="primary" id="mVerstuurKnop" onclick="verstuurMelding()">Melding versturen</button>
     <div class="fout verborgen" id="mFout"></div>
   </div>
 </div>
@@ -132,11 +132,14 @@
   function verwerkFoto(inputEl){
     const statusEl = document.getElementById('mFotoStatus');
     const previewEl = document.getElementById('mFotoPreview');
+    const knop = document.getElementById('mVerstuurKnop');
     gecomprimeerdeFotoBlob = null;
     previewEl.style.display = 'none';
     const file = inputEl.files[0];
     if(!file) return;
 
+    knop.disabled = true;
+    knop.textContent = 'Even geduld — foto wordt verwerkt…';
     statusEl.textContent = 'Foto verwerken…';
     const img = new Image();
     const reader = new FileReader();
@@ -153,6 +156,8 @@
       canvas.width = width; canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
       canvas.toBlob((blob) => {
+        knop.disabled = false;
+        knop.textContent = 'Melding versturen';
         if(blob.size > 3 * 1024 * 1024){
           statusEl.textContent = 'Deze foto is ook na comprimeren te groot (max 3MB). Kies een andere foto.';
           gecomprimeerdeFotoBlob = null;
@@ -225,6 +230,13 @@
   }
 
   async function verstuurMelding(){
+    const fotoInputEl = document.getElementById('mFoto');
+    if(fotoInputEl.files[0] && !gecomprimeerdeFotoBlob){
+      document.getElementById('mFout').textContent = 'De foto wordt nog verwerkt — wacht heel even tot er "✓ Klaar" staat.';
+      document.getElementById('mFout').classList.remove('verborgen');
+      return;
+    }
+
     const type = document.getElementById('mType').value;
     const omschrijving = document.getElementById('mOmschrijving').value.trim();
     const contactGewenst = document.getElementById('mContactGewenst').checked;
