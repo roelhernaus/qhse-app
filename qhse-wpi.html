@@ -137,14 +137,17 @@
   async function renderLijst(){
     const { data: bezoeken, error } = await supabaseClient
       .from('wpi_bezoeken').select('*, wpi_formulieren!inner(naam, soort)')
-      .eq('uitvoerder_id', huidigProfiel.id).eq('wpi_formulieren.soort', 'wpi')
+      .eq('uitvoerder_id', huidigProfiel.id).eq('wpi_formulieren.soort', 'wpi').eq('verborgen_voor_uitvoerder', false)
       .order('aangemaakt_op', { ascending:false });
     if(error) return '<div class="fout">Kon bezoeken niet laden: ' + error.message + '</div>';
     const rows = (bezoeken||[]).map(b => `
       <div class="card ${!b.afgerond ? 'klikbaar' : ''}" ${!b.afgerond ? `onclick="startBezoek('${b.formulier_id}')"` : ''}>
         <div class="row">
           <span>${b.wpi_formulieren ? b.wpi_formulieren.naam : '—'}</span>
-          <span class="tag" style="${b.afgerond ? 'background:var(--green-dim); color:var(--green);' : 'background:var(--amber-dim); color:var(--amber);'}">${b.afgerond ? 'Afgerond' : 'Onderweg'}</span>
+          <div style="display:flex; align-items:center; gap:8px">
+            <span class="tag" style="${b.afgerond ? 'background:var(--green-dim); color:var(--green);' : 'background:var(--amber-dim); color:var(--amber);'}">${b.afgerond ? 'Afgerond' : 'Onderweg'}</span>
+            ${b.afgerond ? `<button class="ghost" style="padding:4px 9px" onclick="event.stopPropagation(); verbergBezoek('${b.id}')">Verbergen</button>` : ''}
+          </div>
         </div>
         <div class="meta" style="margin-top:6px">${new Date(b.aangemaakt_op).toLocaleString('nl-NL')} ${!b.afgerond ? '· tik om verder te gaan' : ''}</div>
       </div>`).join('') || '<div class="meta">Nog geen eerdere bezoeken.</div>';
@@ -167,6 +170,13 @@
         <button class="primary" onclick="startBezoek('${f.id}')">Starten</button>
       </div>`).join('') || '<div class="meta">Geen actieve formulieren beschikbaar.</div>';
     return `<button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug</button>${rows}`;
+  }
+
+  async function verbergBezoek(id){
+    if(!confirm('Dit bezoek uit jouw eigen lijst verbergen? Het blijft gewoon bewaard voor KAM en de compliance-cijfers.')) return;
+    const { error } = await supabaseClient.from('wpi_bezoeken').update({ verborgen_voor_uitvoerder: true }).eq('id', id);
+    if(error){ alert('Verbergen mislukt: ' + error.message); return; }
+    await render();
   }
 
   async function startBezoek(formulierId){

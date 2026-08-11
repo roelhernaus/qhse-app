@@ -461,6 +461,12 @@
       if(!gedaan) aantal++;
     }
 
+    const { data: wpiActies } = await supabaseClient.from('wpi_antwoord_acties').select('id').eq('toegewezen_aan', huidigProfielId).eq('afgerond', false);
+    aantal += (wpiActies||[]).length;
+
+    const { data: toolboxBevestigingen } = await supabaseClient.from('toolbox_bevestigingen').select('id').eq('profiel_id', huidigProfielId).eq('bevestigd', false);
+    aantal += (toolboxBevestigingen||[]).length;
+
     openstaandeActiesAantal = aantal;
     heeftOpenstaandeAlert = alert;
     pasActiesBadgeToe();
