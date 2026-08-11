@@ -238,9 +238,9 @@
 
         <label>Materiaal (PDF)</label>
         <div class="row">
-          <span class="meta">${t.pdf_pad ? '📄 Materiaal gekoppeld' : 'Nog geen materiaal'}</span>
+          <span class="meta" id="materiaalTekst">${t.pdf_pad ? '📄 Materiaal gekoppeld' : 'Nog geen materiaal'}</span>
           <label class="ghost" style="display:inline-block; padding:8px 13px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
-            ${t.pdf_pad ? 'Vervangen' : 'PDF toevoegen'}
+            <span id="materiaalKnopLabel">${t.pdf_pad ? 'Vervangen' : 'PDF toevoegen'}</span>
             <input type="file" accept="application/pdf" style="display:none" onchange="uploadMateriaal(this)">
           </label>
         </div>
@@ -336,7 +336,9 @@
     if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
     const { error: updateFout } = await supabaseClient.from('toolbox_bibliotheek').update({ pdf_pad: pad }).eq('id', actiefId);
     if(updateFout){ statusEl.textContent = 'Koppelen mislukt: ' + updateFout.message; return; }
-    await render();
+    statusEl.textContent = '✓ Geüpload.';
+    document.getElementById('materiaalTekst').textContent = '📄 Materiaal gekoppeld';
+    document.getElementById('materiaalKnopLabel').textContent = 'Vervangen';
   }
 
   if(supabaseClient){
