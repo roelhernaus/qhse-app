@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>QHSE — Melding maken</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --red:#c0392b; --red-dim:#fbeae8;
+    --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:440px; margin:0 auto; padding:32px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:22px; margin:0 0 4px; }
+  .locatie{ font-size:13px; color:var(--text-soft); margin-bottom:20px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:14px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input, select, textarea{ width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; background:#fafaf9; }
+  textarea{ resize:vertical; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:10px; border:1px solid var(--border); background:#fff; padding:13px 20px; font-size:15px; font-weight:700; width:100%; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); margin-top:18px; }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding-succes{ background:var(--green-dim); color:var(--green); font-size:14px; padding:16px; border-radius:10px; line-height:1.5; text-align:center; }
+  .verborgen{ display:none; }
+  .contact-blok{ margin-top:6px; padding-top:14px; border-top:1px solid var(--border); }
+  .checkbox-rij{ display:flex; align-items:center; gap:8px; margin-top:16px; }
+  .checkbox-rij input{ width:auto; }
+  .checkbox-rij label{ margin:0; font-weight:600; }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="geen-locatie" class="wrap verborgen">
+  <div class="card">
+    <b>Geen (geldige) locatie</b>
+    <p style="font-size:13px; color:var(--text-soft); margin-top:8px">Scan de QR-code opnieuw, of vraag degene die je 'm gaf om een nieuwe.</p>
+  </div>
+</div>
+
+<div id="form-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1>Melding maken</h1>
+  <div class="locatie" id="locatieNaam">—</div>
+  <div class="card">
+    <label style="margin-top:0">Type</label>
+    <select id="mType">
+      <option value="Onveilige situatie">Onveilige situatie</option>
+      <option value="Incident">Incident</option>
+      <option value="Verbetervoorstel">Verbetervoorstel</option>
+    </select>
+    <label>Omschrijving</label>
+    <textarea rows="5" id="mOmschrijving" placeholder="Beschrijf zo concreet mogelijk wat je hebt gezien of meegemaakt."></textarea>
+
+    <div class="checkbox-rij">
+      <input type="checkbox" id="mContactGewenst" onchange="toggleContactVelden()">
+      <label for="mContactGewenst">Neem contact met mij op</label>
+    </div>
+    <div id="contactVelden" class="contact-blok verborgen">
+      <label style="margin-top:0">Naam</label>
+      <input type="text" id="mNaam">
+      <label>Telefoon of e-mail</label>
+      <input type="text" id="mContact">
+    </div>
+
+    <button class="primary" onclick="verstuurMelding()">Melding versturen</button>
+    <div class="fout verborgen" id="mFout"></div>
+  </div>
+</div>
+
+<div id="succes-scherm" class="wrap verborgen">
+  <div class="melding-succes">
+    ✓ Bedankt, je melding is verstuurd.<br>Deze komt direct bij de juiste mensen terecht.
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let locatie = null;
+
+  function toggleContactVelden(){
+    document.getElementById('contactVelden').classList.toggle('verborgen', !document.getElementById('mContactGewenst').checked);
+  }
+
+  async function init(){
+    const code = new URLSearchParams(window.location.search).get('locatie');
+    document.getElementById('laad-scherm').style.display = 'none';
+    if(!code || !supabaseClient){
+      document.getElementById('geen-locatie').classList.remove('verborgen');
+      return;
+    }
+    const { data, error } = await supabaseClient.from('locaties').select('*').eq('qr_code', code).maybeSingle();
+    if(error || !data){
+      document.getElementById('geen-locatie').classList.remove('verborgen');
+      return;
+    }
+    locatie = data;
+    document.getElementById('locatieNaam').textContent = locatie.naam;
+    document.getElementById('form-scherm').classList.remove('verborgen');
+  }
+
+  async function verstuurMelding(){
+    const type = document.getElementById('mType').value;
+    const omschrijving = document.getElementById('mOmschrijving').value.trim();
+    const contactGewenst = document.getElementById('mContactGewenst').checked;
+    const naam = contactGewenst ? document.getElementById('mNaam').value.trim() : null;
+    const contact = contactGewenst ? document.getElementById('mContact').value.trim() : null;
+    const foutEl = document.getElementById('mFout');
+    foutEl.classList.add('verborgen');
+
+    if(!omschrijving){ foutEl.textContent = 'Omschrijving is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    if(contactGewenst && (!naam || !contact)){ foutEl.textContent = 'Vul naam en contactgegevens in, of zet het vinkje weer uit.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { error } = await supabaseClient.from('meldingen').insert({
+      organisatie_id: locatie.organisatie_id,
+      type, omschrijving,
+      locatie_id: locatie.id,
+      extern_naam: naam,
+      extern_contact: contact,
+      melder_id: null
+    });
+    if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+
+    document.getElementById('form-scherm').classList.add('verborgen');
+    document.getElementById('succes-scherm').classList.remove('verborgen');
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -61,7 +61,7 @@
   <div class="card">
     <b>Geen toegang</b>
     <p class="meta" style="margin-top:8px">Dit scherm is alleen voor Admin of KAM.</p>
-    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+    <button class="ghost btn-uitloggen-lokaal" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
   </div>
 </div>
 
@@ -73,7 +73,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -85,6 +85,15 @@
   const APP_URL = "https://roelhernaus.github.io/qhse-app";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let huidigeOrganisatie = null;
@@ -226,6 +235,8 @@
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(checkinUrl)}`;
+    const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
+    const meldenQrImg = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(meldenUrl)}`;
 
     let checkinsQuery = supabaseClient
       .from('checkins').select('*').eq('locatie_id', l.id).is('uitgecheckt_op', null)
@@ -259,8 +270,9 @@
         <b>${l.naam}</b>
         <div class="row" style="margin-top:10px">
           <button class="ghost" onclick="verwijderLocatie()">Verwijderen</button>
-          <button class="ghost" onclick="printQr('${qrImg.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}')">🖨️ Print QR-code (A4)</button>
+          <button class="ghost" onclick="printQr('${qrImg.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}')">🖨️ Print check-in QR (A4)</button>
         </div>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="printMeldenQr('${meldenQrImg.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}')">🖨️ Print meldingen-QR (A4) — voor externen, geen account nodig</button>
       </div>
       <div class="eyebrow" style="margin-top:20px">Nu ingecheckt (${(checkins||[]).length})</div>
       ${rows}
@@ -282,6 +294,27 @@
         <h2>${naam}</h2>
         <img src="${qrImgUrl}">
         <p>Scan met de camera van je telefoon</p>
+        <script>window.print();<\/script>
+      </body></html>
+    `);
+    venster.document.close();
+  }
+
+  function printMeldenQr(qrImgUrl, naam){
+    const venster = window.open('', '_blank');
+    venster.document.write(`
+      <html><head><title>Melden QR — ${naam}</title>
+      <style>
+        body{ font-family: Arial, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; }
+        h1{ font-size:32px; margin-bottom:4px; }
+        h2{ font-size:20px; font-weight:400; color:#555; margin-top:0; margin-bottom:30px; }
+        img{ width:320px; height:320px; }
+        p{ font-size:14px; color:#888; margin-top:24px; max-width:340px; }
+      </style></head><body>
+        <h1>Iets gezien? Meld het:</h1>
+        <h2>${naam}</h2>
+        <img src="${qrImgUrl}">
+        <p>Scan met de camera van je telefoon — geen account nodig, meteen een melding maken</p>
         <script>window.print();<\/script>
       </body></html>
     `);

@@ -151,7 +151,7 @@
       return;
     }
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
-    else if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
+    else if(scherm === 'nieuw') inhoud.innerHTML = await renderNieuw();
     else if(scherm === 'formulier') inhoud.innerHTML = await renderFormulier();
   }
 
@@ -203,12 +203,18 @@
     `;
   }
 
-  function renderNieuw(){
+  async function renderNieuw(){
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
         <label style="margin-top:0">Naam van het formulier</label>
         <input type="text" id="nfNaam" placeholder="Bijv. 'Algemene werkplekinspectie'">
+        <label>Locatie/project (optioneel)</label>
+        <select id="nfLocatie">
+          <option value="">— geen specifieke locatie —</option>
+          ${(locaties||[]).map(l => `<option value="${l.id}">${l.naam}</option>`).join('')}
+        </select>
         <div class="row" style="margin-top:16px">
           <span></span>
           <button class="primary" onclick="opslaanNieuwFormulier()">Aanmaken</button>
@@ -220,11 +226,12 @@
 
   async function opslaanNieuwFormulier(){
     const naam = document.getElementById('nfNaam').value.trim();
+    const locatie_id = document.getElementById('nfLocatie').value || null;
     const foutEl = document.getElementById('nfFout');
     foutEl.classList.add('verborgen');
     if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
     const { data, error } = await supabaseClient.from('wpi_formulieren')
-      .insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort: soortActief }).select().single();
+      .insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort: soortActief, locatie_id }).select().single();
     if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     actiefFormulierId = data.id;
     scherm = 'formulier';
@@ -242,6 +249,7 @@
     if(error) return '<div class="fout">Kon formulier niet laden: ' + error.message + '</div>';
     const { data: vragen } = await supabaseClient.from('wpi_vragen').select('*').eq('formulier_id', actiefFormulierId).order('volgorde');
     const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
 
     const vraagRows = (vragen||[]).map((v,i) => `
       <div class="card row">
@@ -261,6 +269,11 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bfActief" style="width:auto" ${f.actief?'checked':''}> Actief (zichtbaar om in te vullen)
         </label>
+        <label>Locatie/project (optioneel)</label>
+        <select id="bfLocatie">
+          <option value="">— geen specifieke locatie —</option>
+          ${(locaties||[]).map(l => `<option value="${l.id}" ${f.locatie_id===l.id?'selected':''}>${l.naam}</option>`).join('')}
+        </select>
         <label>Toegewezen aan</label>
         <select id="bfKoppelType" onchange="toggleKoppelGroep()">
           <option value="iedereen" ${f.koppeling_type==='iedereen'?'selected':''}>Iedereen (met ${soortActief==='mbb'?'management-toegang':'algemene WPI-toegang'})</option>
@@ -324,13 +337,14 @@ FOTO: Is er zichtbare schade aan het hekwerk?
   async function opslaanFormulier(){
     const naam = document.getElementById('bfNaam').value.trim();
     const actief = document.getElementById('bfActief').checked;
+    const locatie_id = document.getElementById('bfLocatie').value || null;
     const koppeling_type = document.getElementById('bfKoppelType').value;
     const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bfKoppelGroep').value || null) : null;
     const foutEl = document.getElementById('bfFout');
     const meldingEl = document.getElementById('bfMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
     if(!naam){ foutEl.textContent = 'Naam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
-    const { error } = await supabaseClient.from('wpi_formulieren').update({ naam, actief, koppeling_type, koppeling_groep_id }).eq('id', actiefFormulierId);
+    const { error } = await supabaseClient.from('wpi_formulieren').update({ naam, actief, locatie_id, koppeling_type, koppeling_groep_id }).eq('id', actiefFormulierId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
   }
