@@ -65,7 +65,7 @@
   <div class="card">
     <b>Geen toegang</b>
     <p class="meta" style="margin-top:8px">Dit beheerscherm is alleen voor Admin of KAM.</p>
-    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+    <button class="ghost btn-uitloggen-lokaal" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
   </div>
 </div>
 
@@ -77,7 +77,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -88,6 +88,15 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst';
@@ -207,6 +216,10 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bewVerplicht" style="width:auto" ${t.verplicht?'checked':''}> Verplicht
         </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
+          <input type="checkbox" id="bewBevestiging" style="width:auto" ${t.vereist_bevestiging?'checked':''}> Ontvangers moeten ontvangst zelf bevestigen (via Mijn Acties)
+        </label>
+        <div class="meta" style="margin-top:4px">Staat dit aan, dan krijgt elke geregistreerde (interne) deelnemer een losse bevestigingstaak, bovenop de aanwezigheidsregistratie door de gever.</div>
 
         <label>Toegewezen aan</label>
         <select id="bewKoppelType" onchange="toggleKoppelType()">
@@ -284,6 +297,7 @@
   async function opslaan(){
     const naam = document.getElementById('bewNaam').value.trim();
     const verplicht = document.getElementById('bewVerplicht').checked;
+    const vereist_bevestiging = document.getElementById('bewBevestiging').checked;
     const koppeling_type = document.getElementById('bewKoppelType').value;
     const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bewGroep').value || null) : null;
     const foutEl = document.getElementById('bewFout');
@@ -292,7 +306,7 @@
     meldingEl.classList.add('verborgen');
 
     const { error } = await supabaseClient.from('toolbox_bibliotheek')
-      .update({ naam, verplicht, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
+      .update({ naam, verplicht, vereist_bevestiging, koppeling_type, koppeling_groep_id }).eq('id', actiefId);
     if(error){
       foutEl.textContent = 'Opslaan mislukt: ' + error.message;
       foutEl.classList.remove('verborgen');
