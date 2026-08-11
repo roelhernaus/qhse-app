@@ -66,7 +66,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -77,6 +77,15 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'geven'
@@ -112,6 +121,15 @@
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('login-scherm').classList.add('verborgen');
     document.getElementById('app-scherm').classList.remove('verborgen');
+
+    const params = new URLSearchParams(window.location.search);
+    const vanuitLinkId = params.get('geef');
+    if(vanuitLinkId){
+      await startGeven(vanuitLinkId, params.get('naam') || '');
+      if(actieveSessie) actieveSessie.geselecteerd.add(huidigProfiel.id);
+      await render();
+      return;
+    }
     scherm = 'lijst';
     await render();
   }
@@ -236,6 +254,8 @@
     const foutEl = document.getElementById('gevenFout');
     foutEl.classList.add('verborgen');
 
+    const { data: toolbox } = await supabaseClient.from('toolbox_bibliotheek').select('vereist_bevestiging').eq('id', toolboxId).single();
+
     const { data: sessie, error: sessieFout } = await supabaseClient
       .from('toolbox_sessies')
       .insert({ organisatie_id: huidigProfiel.organisatie_id, toolbox_id: toolboxId, gever_id: huidigProfiel.id, datum })
@@ -246,8 +266,18 @@
       ...[...geselecteerd].map(profiel_id => ({ sessie_id: sessie.id, profiel_id, aanwezig: true })),
       ...extern.map(naam => ({ sessie_id: sessie.id, naam, aanwezig: true }))
     ];
-    const { error: deelnemersFout } = await supabaseClient.from('toolbox_deelnemers').insert(deelnemerRijen);
+    const { data: opgeslagenDeelnemers, error: deelnemersFout } = await supabaseClient.from('toolbox_deelnemers').insert(deelnemerRijen).select();
     if(deelnemersFout){ foutEl.textContent = 'Deelnemers opslaan mislukt: ' + deelnemersFout.message; foutEl.classList.remove('verborgen'); return; }
+
+    if(toolbox && toolbox.vereist_bevestiging){
+      const interneDeelnemers = (opgeslagenDeelnemers||[]).filter(d => d.profiel_id);
+      if(interneDeelnemers.length){
+        const bevestigingRijen = interneDeelnemers.map(d => ({
+          organisatie_id: huidigProfiel.organisatie_id, deelnemer_id: d.id, profiel_id: d.profiel_id
+        }));
+        await supabaseClient.from('toolbox_bevestigingen').insert(bevestigingRijen);
+      }
+    }
 
     actieveSessie = null;
     scherm = 'lijst';

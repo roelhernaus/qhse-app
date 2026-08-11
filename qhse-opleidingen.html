@@ -131,6 +131,12 @@
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('login-scherm').classList.add('verborgen');
     document.getElementById('app-scherm').classList.remove('verborgen');
+
+    const vanuitLink = new URLSearchParams(window.location.search).get('open');
+    if(vanuitLink){
+      await startOpleiding(vanuitLink);
+      return;
+    }
     scherm = 'lijst';
     await render();
   }

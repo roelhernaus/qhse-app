@@ -165,7 +165,7 @@
       }
       if(openstaand){
         const isAlert = o.opleiding_soorten && o.opleiding_soorten.is_alert;
-        items.push({ bron: isAlert ? 'Alert' : 'Opleiding', isAlert, omschrijving: o.naam, pagina:'qhse-opleidingen.html' });
+        items.push({ bron: isAlert ? 'Alert' : 'Opleiding', isAlert, omschrijving: o.naam, pagina:'qhse-opleidingen.html?open=' + o.id });
       }
     }
 
@@ -179,7 +179,7 @@
         const { data: deelname } = await supabaseClient.from('toolbox_deelnemers').select('id').in('sessie_id', sessieIds).eq('profiel_id', huidigProfiel.id).limit(1);
         gedaan = !!(deelname && deelname.length);
       }
-      if(!gedaan) items.push({ bron:'Toolbox', isAlert:false, omschrijving: tb.naam, pagina:'qhse-toolboxen.html' });
+      if(!gedaan) items.push({ bron:'Toolbox', isAlert:false, omschrijving: tb.naam, pagina:'qhse-toolboxen.html?geef=' + tb.id + '&naam=' + encodeURIComponent(tb.naam) });
     }
 
     return items;
@@ -253,6 +253,35 @@
       });
     }
 
+    const { data: bevestigingen } = await supabaseClient
+      .from('toolbox_bevestigingen').select('id, deelnemer_id, bevestigd')
+      .eq('profiel_id', huidigProfiel.id).eq('bevestigd', false);
+    if(bevestigingen && bevestigingen.length){
+      const deelnemerIds = bevestigingen.map(b=>b.deelnemer_id);
+      const { data: deelnemers } = await supabaseClient.from('toolbox_deelnemers').select('id, sessie_id').in('id', deelnemerIds);
+      const sessieIds = [...new Set((deelnemers||[]).map(d=>d.sessie_id))];
+      const { data: sessies } = sessieIds.length ? await supabaseClient.from('toolbox_sessies').select('id, toolbox_id, datum').in('id', sessieIds) : { data: [] };
+      const toolboxIds = [...new Set((sessies||[]).map(s=>s.toolbox_id))];
+      const { data: toolboxen } = toolboxIds.length ? await supabaseClient.from('toolbox_bibliotheek').select('id, naam').in('id', toolboxIds) : { data: [] };
+
+      const deelnemerMap = {}; (deelnemers||[]).forEach(d => { deelnemerMap[d.id] = d; });
+      const sessieMap = {}; (sessies||[]).forEach(s => { sessieMap[s.id] = s; });
+      const toolboxMap = {}; (toolboxen||[]).forEach(t => { toolboxMap[t.id] = t; });
+
+      bevestigingen.forEach(b => {
+        const deelnemer = deelnemerMap[b.deelnemer_id];
+        const sessie = deelnemer ? sessieMap[deelnemer.sessie_id] : null;
+        const toolbox = sessie ? toolboxMap[sessie.toolbox_id] : null;
+        items.push({
+          bron:'Toolbox',
+          context: sessie ? new Date(sessie.datum).toLocaleDateString('nl-NL') : '',
+          omschrijving: 'Bevestig ontvangst: ' + (toolbox ? toolbox.naam : 'toolbox'),
+          afgerond:false,
+          actieType:'toolboxBevestiging', actieId:b.id
+        });
+      });
+    }
+
     return items;
   }
 
@@ -302,6 +331,7 @@
     else if(type === 'shift') await supabaseClient.from('logboek_regels').update({ afgerond: true, ...notitieVeld }).eq('id', id);
     else if(type === 'vergadering') await supabaseClient.from('logboek_acties').update({ afgerond: true, ...notitieVeld }).eq('id', id);
     else if(type === 'wpi') await supabaseClient.from('wpi_antwoord_acties').update({ afgerond: true, ...notitieVeld }).eq('id', id);
+    else if(type === 'toolboxBevestiging') await supabaseClient.from('toolbox_bevestigingen').update({ bevestigd: true, bevestigd_op: new Date().toISOString() }).eq('id', id);
     await render();
   }
 
