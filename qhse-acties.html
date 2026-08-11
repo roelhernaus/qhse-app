@@ -289,14 +289,18 @@
   async function verzamelGemaakt(){
     const items = [];
 
+    const { data: verborgen } = await supabaseClient.from('verborgen_items').select('bron_tabel, bron_id').eq('profiel_id', huidigProfiel.id);
+    const verborgenSet = new Set((verborgen||[]).map(v => v.bron_tabel + ':' + v.bron_id));
+    const isVerborgen = (tabel, id) => verborgenSet.has(tabel + ':' + id);
+
     const { data: meldingen } = await supabaseClient
       .from('meldingen_view').select('*').eq('melder_id', huidigProfiel.id);
-    (meldingen||[]).forEach(m => items.push({ bron:'Melding', context:m.type, omschrijving:m.omschrijving, afgerond: m.status==='Afgehandeld' }));
+    (meldingen||[]).forEach(m => { if(!isVerborgen('meldingen', m.id)) items.push({ bron:'Melding', context:m.type, omschrijving:m.omschrijving, afgerond: m.status==='Afgehandeld', verbergTabel:'meldingen', verbergId:m.id }); });
 
     const { data: shiftActies } = await supabaseClient
       .from('logboek_regels').select('id, boodschap, afgerond, toegewezen_aan, logboeken(naam)')
       .eq('invuller_id', huidigProfiel.id).not('toegewezen_aan', 'is', null);
-    (shiftActies||[]).forEach(r => items.push({ bron:'Logboek', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:r.afgerond }));
+    (shiftActies||[]).forEach(r => { if(!isVerborgen('logboek_regels', r.id)) items.push({ bron:'Logboek', context: r.logboeken ? r.logboeken.naam : '', omschrijving:r.boodschap, afgerond:r.afgerond, verbergTabel:'logboek_regels', verbergId:r.id }); });
 
     const { data: regelsVanMij } = await supabaseClient
       .from('logboek_regels').select('id, naam_vergadering, logboeken(naam)').eq('invuller_id', huidigProfiel.id);
@@ -305,12 +309,19 @@
       const { data: acties } = await supabaseClient
         .from('logboek_acties').select('id, omschrijving, deadline, afgerond, regel_id').in('regel_id', regelIds);
       (acties||[]).forEach(a => {
+        if(isVerborgen('logboek_acties', a.id)) return;
         const regel = (regelsVanMij||[]).find(r=>r.id===a.regel_id);
-        items.push({ bron:'Notule', context: regel ? regel.naam_vergadering : '', omschrijving:a.omschrijving, deadline:a.deadline, afgerond:a.afgerond });
+        items.push({ bron:'Notule', context: regel ? regel.naam_vergadering : '', omschrijving:a.omschrijving, deadline:a.deadline, afgerond:a.afgerond, verbergTabel:'logboek_acties', verbergId:a.id });
       });
     }
 
     return items;
+  }
+
+  async function verbergItem(tabel, id){
+    const { error } = await supabaseClient.from('verborgen_items').insert({ profiel_id: huidigProfiel.id, bron_tabel: tabel, bron_id: id });
+    if(error){ alert('Verbergen mislukt: ' + error.message); return; }
+    await render();
   }
 
   async function bekijkWpiFoto(pad){
@@ -333,7 +344,13 @@
         </div>
       ` : ''}
       ${item.deadline ? `<div class="meta" style="margin-top:6px">Deadline: ${new Date(item.deadline).toLocaleDateString('nl-NL')}</div>` : ''}
-      ${!item.afgerond && item.actieType ? `<div class="row" style="margin-top:10px"><span></span><button class="ghost" onclick="voerActieUit('${item.actieType}','${item.actieId}')">Markeer afgerond</button></div>` : ''}
+      <div class="row" style="margin-top:10px">
+        <span></span>
+        <div style="display:flex; gap:8px">
+          ${item.verbergTabel ? `<button class="ghost" onclick="verbergItem('${item.verbergTabel}','${item.verbergId}')">Verbergen</button>` : ''}
+          ${!item.afgerond && item.actieType ? `<button class="ghost" onclick="voerActieUit('${item.actieType}','${item.actieId}')">Markeer afgerond</button>` : ''}
+        </div>
+      </div>
     </div>`;
   }
 
