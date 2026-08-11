@@ -255,7 +255,7 @@
     const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('arbeidsmiddel_type_id', checklistTypeId).order('volgorde');
     const rows = (vragen||[]).map((v,i) => `
       <div class="card row">
-        <span>${i+1}. ${v.vraag}</span>
+        <span>${i+1}. ${v.vraag} ${v.soort==='open' ? '<span class="tag" style="margin-left:6px">Open vraag</span>' : ''}</span>
         <button class="ghost" onclick="verwijderChecklistVraag('${v.id}')">Verwijderen</button>
       </div>`).join('') || '<div class="meta">Nog geen vragen voor dit type.</div>';
     return `
@@ -265,14 +265,20 @@
       <div class="card" style="margin-top:12px">
         <label style="margin-top:0">Nieuwe vraag/controlepunt (één tegelijk)</label>
         <input type="text" id="ccvNieuweVraag" placeholder="Bijv. 'Isolatieweerstand gemeten en binnen norm?'">
+        <label>Soort</label>
+        <select id="ccvSoort">
+          <option value="ja_nee_nvt">Ja / Nee / N.v.t.</option>
+          <option value="open">Open vraag (los antwoord, bijv. een aantal of merk)</option>
+        </select>
         <button class="ghost" style="margin-top:10px" onclick="voegChecklistVraagToe()">+ Toevoegen</button>
       </div>
       <div class="card" style="margin-top:12px">
         <label style="margin-top:0">Meerdere tegelijk plakken (één controlepunt per regel)</label>
         <textarea id="ccvBulkVragen" rows="6" placeholder="Isolatieweerstand gemeten en binnen norm?
 Aardlekschakelaar getest?
-Behuizing vrij van zichtbare schade?
+OPEN: Aantal treden/sporten
 ..."></textarea>
+        <div class="meta" style="margin-top:4px">Zet <b>OPEN:</b> voor een regel om er een open vraag (los antwoord) van te maken, in plaats van Ja/Nee/N.v.t.</div>
         <button class="primary" style="margin-top:10px" onclick="voegBulkChecklistVragenToe()">+ Alle regels toevoegen</button>
         <div class="fout verborgen" id="ccvBulkFout"></div>
         <div class="melding verborgen" id="ccvBulkMelding"></div>
@@ -282,10 +288,11 @@ Behuizing vrij van zichtbare schade?
 
   async function voegChecklistVraagToe(){
     const vraag = document.getElementById('ccvNieuweVraag').value.trim();
+    const soort = document.getElementById('ccvSoort').value;
     if(!vraag) return;
     const { data: bestaande } = await supabaseClient.from('keuring_checklist_vragen').select('volgorde').eq('arbeidsmiddel_type_id', checklistTypeId).order('volgorde', { ascending:false }).limit(1);
     const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
-    const { error } = await supabaseClient.from('keuring_checklist_vragen').insert({ organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_type_id: checklistTypeId, vraag, volgorde });
+    const { error } = await supabaseClient.from('keuring_checklist_vragen').insert({ organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_type_id: checklistTypeId, vraag, soort, volgorde });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
     await render();
   }
@@ -302,9 +309,11 @@ Behuizing vrij van zichtbare schade?
     const { data: bestaande } = await supabaseClient.from('keuring_checklist_vragen').select('volgorde').eq('arbeidsmiddel_type_id', checklistTypeId).order('volgorde', { ascending:false }).limit(1);
     let volgorde = bestaande && bestaande.length ? bestaande[0].volgorde : 0;
 
-    const rijen = regels.map(vraag => {
+    const rijen = regels.map(regel => {
       volgorde++;
-      return { organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_type_id: checklistTypeId, vraag, volgorde };
+      const isOpen = /^open:\s*/i.test(regel);
+      const vraag = isOpen ? regel.replace(/^open:\s*/i, '') : regel;
+      return { organisatie_id: huidigProfiel.organisatie_id, arbeidsmiddel_type_id: checklistTypeId, vraag, soort: isOpen ? 'open' : 'ja_nee_nvt', volgorde };
     });
 
     const { error } = await supabaseClient.from('keuring_checklist_vragen').insert(rijen);
@@ -645,11 +654,19 @@ Behuizing vrij van zichtbare schade?
 
   async function startZelfRegistreren(typeId){
     const { data: vragen } = await supabaseClient.from('keuring_checklist_vragen').select('*').eq('arbeidsmiddel_type_id', typeId).order('volgorde');
-    zelfRegistrerenAntwoorden = (vragen||[]).map(v => ({ vraag_id: v.id, vraag: v.vraag, antwoord: 'ja', opmerking: '' }));
+    zelfRegistrerenAntwoorden = (vragen||[]).map(v => ({
+      vraag_id: v.id, vraag: v.vraag, soort: v.soort || 'ja_nee_nvt',
+      antwoord: v.soort === 'open' ? '' : 'ja', opmerking: ''
+    }));
   }
 
   function renderChecklistInvulBlok(){
-    const vraagRows = zelfRegistrerenAntwoorden.map((a,i) => `
+    const vraagRows = zelfRegistrerenAntwoorden.map((a,i) => a.soort === 'open' ? `
+      <div class="card" style="margin-bottom:8px">
+        <div style="font-size:13px">${a.vraag}</div>
+        <input type="text" placeholder="Antwoord" value="${a.antwoord||''}" oninput="zelfRegistrerenAntwoorden[${i}].antwoord=this.value" style="margin-top:8px">
+      </div>
+    ` : `
       <div class="card" style="margin-bottom:8px">
         <div style="font-size:13px">${a.vraag}</div>
         <div class="tabs" style="margin-top:8px">
@@ -721,7 +738,10 @@ Behuizing vrij van zichtbare schade?
         </table>
         <h2 style="font-size:14px; margin-top:20px;">Checklist</h2>
         <table>
-          ${(k.checklist_antwoorden||[]).map(a => `<tr><td>${a.vraag}</td><td class="${a.antwoord}">${a.antwoord==='ja'?'✓ Ja':(a.antwoord==='nee'?'✗ Nee':'— N.v.t.')}</td><td>${a.opmerking||''}</td></tr>`).join('')}
+          ${(k.checklist_antwoorden||[]).map(a => a.soort === 'open'
+            ? `<tr><td>${a.vraag}</td><td colspan="2">${a.antwoord || '—'}</td></tr>`
+            : `<tr><td>${a.vraag}</td><td class="${a.antwoord}">${a.antwoord==='ja'?'✓ Ja':(a.antwoord==='nee'?'✗ Nee':'— N.v.t.')}</td><td>${a.opmerking||''}</td></tr>`
+          ).join('')}
         </table>
         <p style="margin-top:30px; font-size:10px; color:#999;">Digitaal keuringsformulier, gegenereerd op ${new Date().toLocaleDateString('nl-NL')}.</p>
         <script>window.print();<\/script>

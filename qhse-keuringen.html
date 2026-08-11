@@ -340,7 +340,10 @@
         </table>
         <h2 style="font-size:14px; margin-top:20px;">Checklist</h2>
         <table>
-          ${(k.checklist_antwoorden||[]).map(a => `<tr><td>${a.vraag}</td><td class="${a.antwoord}">${a.antwoord==='ja'?'✓ Ja':(a.antwoord==='nee'?'✗ Nee':'— N.v.t.')}</td><td>${a.opmerking||''}</td></tr>`).join('')}
+          ${(k.checklist_antwoorden||[]).map(a => a.soort === 'open'
+            ? `<tr><td>${a.vraag}</td><td colspan="2">${a.antwoord || '—'}</td></tr>`
+            : `<tr><td>${a.vraag}</td><td class="${a.antwoord}">${a.antwoord==='ja'?'✓ Ja':(a.antwoord==='nee'?'✗ Nee':'— N.v.t.')}</td><td>${a.opmerking||''}</td></tr>`
+          ).join('')}
         </table>
         <p style="margin-top:30px; font-size:10px; color:#999;">Digitaal keuringsformulier, gegenereerd op ${new Date().toLocaleDateString('nl-NL')}.</p>
         <script>window.print();<\/script>
