@@ -27,6 +27,7 @@
   input, textarea, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
   label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; }
+  .klikbaar{ cursor:pointer; }
   .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
   .tag.kritiek{ background:var(--red-dim); color:var(--red); }
@@ -163,12 +164,12 @@
       .order('aangemaakt_op', { ascending:false });
     if(error) return '<div class="fout">Kon bezoeken niet laden: ' + error.message + '</div>';
     const rows = (bezoeken||[]).map(b => `
-      <div class="card">
+      <div class="card ${!b.afgerond ? 'klikbaar' : ''}" ${!b.afgerond ? `onclick="startBezoek('${b.formulier_id}')"` : ''}>
         <div class="row">
           <span>${b.wpi_formulieren ? b.wpi_formulieren.naam : '—'}</span>
           <span class="tag" style="${b.afgerond ? 'background:var(--green-dim); color:var(--green);' : 'background:var(--amber-dim); color:var(--amber);'}">${b.afgerond ? 'Afgerond' : 'Onderweg'}</span>
         </div>
-        <div class="meta" style="margin-top:6px">${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+        <div class="meta" style="margin-top:6px">${new Date(b.aangemaakt_op).toLocaleString('nl-NL')} ${!b.afgerond ? '· tik om verder te gaan' : ''}</div>
       </div>`).join('') || '<div class="meta">Nog geen eerdere bezoeken.</div>';
     return `
       <div class="row" style="margin-bottom:16px">
