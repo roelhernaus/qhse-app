@@ -63,7 +63,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -74,6 +74,15 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
 
@@ -210,6 +219,40 @@
       actieType:'vergadering', actieId:a.id
     }));
 
+    const { data: wpiActies } = await supabaseClient
+      .from('wpi_antwoord_acties').select('id, omschrijving, deadline, afgerond, antwoord_id')
+      .eq('toegewezen_aan', huidigProfiel.id).eq('afgerond', false);
+    if(wpiActies && wpiActies.length){
+      const antwoordIds = [...new Set(wpiActies.map(a=>a.antwoord_id))];
+      const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('id, vraag_id, bezoek_id').in('id', antwoordIds);
+      const vraagIds = [...new Set((antwoorden||[]).map(a=>a.vraag_id))];
+      const bezoekIds = [...new Set((antwoorden||[]).map(a=>a.bezoek_id))];
+      const { data: vragen } = vraagIds.length ? await supabaseClient.from('wpi_vragen').select('id, tekst').in('id', vraagIds) : { data: [] };
+      const { data: bezoeken } = bezoekIds.length ? await supabaseClient.from('wpi_bezoeken').select('id, formulier_id').in('id', bezoekIds) : { data: [] };
+      const formulierIds = [...new Set((bezoeken||[]).map(b=>b.formulier_id))];
+      const { data: formulieren } = formulierIds.length ? await supabaseClient.from('wpi_formulieren').select('id, naam').in('id', formulierIds) : { data: [] };
+
+      const antwoordMap = {}; (antwoorden||[]).forEach(a => { antwoordMap[a.id] = a; });
+      const vraagMap = {}; (vragen||[]).forEach(v => { vraagMap[v.id] = v; });
+      const bezoekMap = {}; (bezoeken||[]).forEach(b => { bezoekMap[b.id] = b; });
+      const formulierMap = {}; (formulieren||[]).forEach(f => { formulierMap[f.id] = f; });
+
+      wpiActies.forEach(a => {
+        const antw = antwoordMap[a.antwoord_id];
+        const vraag = antw ? vraagMap[antw.vraag_id] : null;
+        const bezoek = antw ? bezoekMap[antw.bezoek_id] : null;
+        const formulier = bezoek ? formulierMap[bezoek.formulier_id] : null;
+        items.push({
+          bron:'WPI/MBB',
+          context: formulier ? formulier.naam : '',
+          omschrijving: a.omschrijving + (vraag ? ' (n.a.v.: ' + vraag.tekst + ')' : ''),
+          deadline: a.deadline,
+          afgerond:false,
+          actieType:'wpi', actieId:a.id
+        });
+      });
+    }
+
     return items;
   }
 
@@ -258,6 +301,7 @@
     if(type === 'melding') await supabaseClient.from('meldingen').update({ status: 'Afgehandeld', ...notitieVeld }).eq('id', id);
     else if(type === 'shift') await supabaseClient.from('logboek_regels').update({ afgerond: true, ...notitieVeld }).eq('id', id);
     else if(type === 'vergadering') await supabaseClient.from('logboek_acties').update({ afgerond: true, ...notitieVeld }).eq('id', id);
+    else if(type === 'wpi') await supabaseClient.from('wpi_antwoord_acties').update({ afgerond: true, ...notitieVeld }).eq('id', id);
     await render();
   }
 

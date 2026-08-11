@@ -67,7 +67,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -78,6 +78,15 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'kiezen' | 'invullen'
@@ -204,18 +213,28 @@
     const rows = vragen.map(v => {
       const antwoord = antwoorden[v.id];
       const negatief = antwoord && isNegatief(v, antwoord);
-      const opties = v.type === 'slecht/matig/goed' ? ['slecht','matig','goed'] : ['nee','ja'];
-      const knoppen = opties.map(o => `<button class="${antwoord===o?'actief':''}" onclick="beantwoord('${v.id}','${o}')">${o[0].toUpperCase()+o.slice(1)}</button>`).join('');
+      const verplichteFoto = v.kritiek && negatief;
+      const toonFotoBlok = verplichteFoto || v.foto_optie;
+
+      let invoerHtml;
+      if(v.type === 'open'){
+        invoerHtml = `<input type="text" placeholder="Antwoord" value="${antwoord||''}" oninput="actiefBezoek.antwoorden['${v.id}']=this.value" style="margin-top:10px">`;
+      } else {
+        const opties = v.type === 'slecht/matig/goed' ? ['slecht','matig','goed'] : ['nee','ja'];
+        const knoppen = opties.map(o => `<button class="${antwoord===o?'actief':''}" onclick="beantwoord('${v.id}','${o}')">${o[0].toUpperCase()+o.slice(1)}</button>`).join('');
+        invoerHtml = `<div class="toggle" style="margin-top:10px">${knoppen}</div>`;
+      }
+
       return `
         <div class="card">
           <div class="row">
             <span style="max-width:75%">${v.tekst}</span>
             ${v.kritiek ? '<span class="tag kritiek">kritiek</span>' : ''}
           </div>
-          <div class="toggle" style="margin-top:10px">${knoppen}</div>
-          ${v.kritiek && negatief ? `
+          ${invoerHtml}
+          ${toonFotoBlok ? `
             <div style="margin-top:10px">
-              <label style="margin:0 0 5px">Foto van de afwijking</label>
+              <label style="margin:0 0 5px">Foto${verplichteFoto ? ' van de afwijking' : ' (optioneel, als bewijs)'}</label>
               ${fotos[v.id] ? `
                 ${previews[v.id] ? `<img src="${previews[v.id]}" style="width:100%; max-width:220px; border-radius:8px; margin-bottom:8px; display:block;">` : ''}
                 <div class="meta" style="margin-bottom:6px">✓ Geüpload</div>
@@ -228,7 +247,7 @@
                 <div class="meta" id="fotoStatus${v.id}" style="margin-top:4px"></div>
               `}
             </div>
-            ${!fotos[v.id] ? '<div class="waarschuwing">Verplicht bij een kritieke afwijking.</div>' : ''}
+            ${verplichteFoto && !fotos[v.id] ? '<div class="waarschuwing">Verplicht bij een kritieke afwijking.</div>' : ''}
           ` : ''}
         </div>`;
     }).join('');

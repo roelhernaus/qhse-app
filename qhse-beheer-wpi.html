@@ -63,7 +63,7 @@
   <div class="card">
     <b>Geen toegang</b>
     <p class="meta" style="margin-top:8px">Dit scherm is alleen voor Admin of KAM.</p>
-    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+    <button class="ghost btn-uitloggen-lokaal" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
   </div>
 </div>
 
@@ -75,7 +75,7 @@
     </div>
     <div style="text-align:right">
       <div class="whoami" id="wieBenIk">—</div>
-      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+      <button class="ghost btn-uitloggen-lokaal" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
     </div>
   </div>
   <div id="inhoud"></div>
@@ -86,6 +86,15 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  // Binnen de schil geopend? Dan hoort uitloggen via de schil zelf te gaan,
+  // niet via deze losse knop (die anders alleen dit venster resette, terwijl
+  // de schil eromheen nergens van wist).
+  if(window.self !== window.top){
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.btn-uitloggen-lokaal').forEach(b => b.style.display = 'none');
+    });
+  }
 
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'formulier' | 'nieuw'
@@ -131,11 +140,24 @@
     await render();
   }
 
+  let hoofdScherm = 'formulieren'; // 'formulieren' | 'bezoeken'
+
   async function render(){
     const inhoud = document.getElementById('inhoud');
+    if(hoofdScherm === 'bezoeken'){
+      if(scherm === 'bezoekDetail') inhoud.innerHTML = await renderBezoekDetail();
+      else inhoud.innerHTML = await renderBezoekenLijst();
+      return;
+    }
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
     else if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
     else if(scherm === 'formulier') inhoud.innerHTML = await renderFormulier();
+  }
+
+  function kiesHoofdScherm(keuze){
+    hoofdScherm = keuze;
+    scherm = 'lijst';
+    render();
   }
 
   function kiesSoort(soort){
@@ -156,6 +178,7 @@
       </div>`).join('') || '<div class="meta">Nog geen formulieren.</div>';
 
     return `
+      ${renderHoofdTabs()}
       <div class="tabs">
         <div class="tab ${soortActief==='wpi'?'actief':''}" onclick="kiesSoort('wpi')">WPI</div>
         <div class="tab ${soortActief==='mbb'?'actief':''}" onclick="kiesSoort('mbb')">MBB</div>
@@ -165,6 +188,17 @@
         <button class="primary" onclick="scherm='nieuw'; render();">+ Nieuw formulier</button>
       </div>
       ${rows}
+    `;
+  }
+
+  function renderHoofdTabs(){
+    return `
+      <div class="row" style="margin-bottom:14px">
+        <div class="tabs">
+          <div class="tab ${hoofdScherm==='formulieren'?'actief':''}" onclick="kiesHoofdScherm('formulieren')">Formulieren</div>
+          <div class="tab ${hoofdScherm==='bezoeken'?'actief':''}" onclick="kiesHoofdScherm('bezoeken')">Bezoeken</div>
+        </div>
+      </div>
     `;
   }
 
@@ -206,10 +240,11 @@
     const { data: f, error } = await supabaseClient.from('wpi_formulieren').select('*').eq('id', actiefFormulierId).single();
     if(error) return '<div class="fout">Kon formulier niet laden: ' + error.message + '</div>';
     const { data: vragen } = await supabaseClient.from('wpi_vragen').select('*').eq('formulier_id', actiefFormulierId).order('volgorde');
+    const { data: groepen } = await supabaseClient.from('groepen').select('*').order('naam');
 
     const vraagRows = (vragen||[]).map((v,i) => `
       <div class="card row">
-        <span>${i+1}. ${v.tekst} ${v.kritiek ? '<span class="tag" style="margin-left:6px; background:var(--red-dim); color:var(--red);">⚠️ Kritiek</span>' : ''} ${v.type==='slecht/matig/goed' ? '<span class="tag" style="margin-left:6px">Slecht/Matig/Goed</span>' : ''}</span>
+        <span>${i+1}. ${v.tekst} ${v.kritiek ? '<span class="tag" style="margin-left:6px; background:var(--red-dim); color:var(--red);">⚠️ Kritiek</span>' : ''} ${v.type==='slecht/matig/goed' ? '<span class="tag" style="margin-left:6px">Slecht/Matig/Goed</span>' : ''} ${v.type==='open' ? '<span class="tag" style="margin-left:6px">Open vraag</span>' : ''} ${v.foto_optie ? '<span class="tag" style="margin-left:6px">📷 Foto optioneel</span>' : ''}</span>
         <button class="ghost" onclick="verwijderVraag('${v.id}')">Verwijderen</button>
       </div>`).join('') || '<div class="meta">Nog geen vragen.</div>';
 
@@ -221,6 +256,16 @@
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
           <input type="checkbox" id="bfActief" style="width:auto" ${f.actief?'checked':''}> Actief (zichtbaar om in te vullen)
         </label>
+        <label>Toegewezen aan</label>
+        <select id="bfKoppelType" onchange="toggleKoppelGroep()">
+          <option value="iedereen" ${f.koppeling_type==='iedereen'?'selected':''}>Iedereen (met ${soortActief==='mbb'?'management-toegang':'algemene WPI-toegang'})</option>
+          <option value="groep" ${f.koppeling_type==='groep'?'selected':''}>Specifieke groep</option>
+        </select>
+        <select id="bfKoppelGroep" style="margin-top:8px; ${f.koppeling_type!=='groep'?'display:none':''}">
+          <option value="">— kies een groep —</option>
+          ${(groepen||[]).map(g => `<option value="${g.id}" ${f.koppeling_groep_id===g.id?'selected':''}>${g.naam}</option>`).join('')}
+        </select>
+        <div class="meta" style="margin-top:4px">Kies je een groep, dan zien alleen leden van die groep dit formulier — handig om bijv. KAM andere vragen te geven dan een werkvoorbereider.</div>
         <div class="row" style="margin-top:16px">
           <button class="ghost" onclick="verwijderFormulier()">Verwijderen</button>
           <button class="primary" onclick="opslaanFormulier()">Opslaan</button>
@@ -239,9 +284,13 @@
         <select id="nvType">
           <option value="ja/nee">Ja / Nee</option>
           <option value="slecht/matig/goed">Slecht / Matig / Goed</option>
+          <option value="open">Open vraag (los antwoord)</option>
         </select>
         <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
           <input type="checkbox" id="nvKritiek" style="width:auto"> Kritieke vraag (bij "Nee" wordt direct een melding aangemaakt)
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
+          <input type="checkbox" id="nvFoto" style="width:auto"> Optioneel foto-bewijs toestaan (nooit verplicht)
         </label>
         <button class="ghost" style="margin-top:10px" onclick="voegVraagToe()">+ Toevoegen</button>
       </div>
@@ -252,22 +301,31 @@
 Zijn vluchtwegen vrij?
 KRITIEK: Is de nooduitgang bereikbaar?
 SMG: Algehele orde en netheid
+OPEN: Wat is de weersomstandigheid?
+FOTO: Is er zichtbare schade aan het hekwerk?
 ..."></textarea>
-        <div class="meta" style="margin-top:4px">Zet <b>KRITIEK:</b> voor een regel voor een kritieke ja/nee-vraag. Zet <b>SMG:</b> voor een Slecht/Matig/Goed-vraag. Niets ervoor = gewone Ja/Nee-vraag.</div>
+        <div class="meta" style="margin-top:4px">Zet <b>KRITIEK:</b> voor een kritieke ja/nee-vraag, <b>SMG:</b> voor Slecht/Matig/Goed, <b>OPEN:</b> voor een open vraag. Zet <b>FOTO:</b> (eventueel gecombineerd, bijv. <b>FOTO KRITIEK:</b>) om optioneel foto-bewijs toe te staan bij die vraag. Niets ervoor = gewone Ja/Nee-vraag.</div>
         <button class="primary" style="margin-top:10px" onclick="voegBulkVragenToe()">+ Alle regels toevoegen</button>
         <div class="fout verborgen" id="bulkFout"></div>
       </div>
     `;
   }
 
+  function toggleKoppelGroep(){
+    const type = document.getElementById('bfKoppelType').value;
+    document.getElementById('bfKoppelGroep').style.display = type === 'groep' ? 'block' : 'none';
+  }
+
   async function opslaanFormulier(){
     const naam = document.getElementById('bfNaam').value.trim();
     const actief = document.getElementById('bfActief').checked;
+    const koppeling_type = document.getElementById('bfKoppelType').value;
+    const koppeling_groep_id = koppeling_type === 'groep' ? (document.getElementById('bfKoppelGroep').value || null) : null;
     const foutEl = document.getElementById('bfFout');
     const meldingEl = document.getElementById('bfMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
     if(!naam){ foutEl.textContent = 'Naam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
-    const { error } = await supabaseClient.from('wpi_formulieren').update({ naam, actief }).eq('id', actiefFormulierId);
+    const { error } = await supabaseClient.from('wpi_formulieren').update({ naam, actief, koppeling_type, koppeling_groep_id }).eq('id', actiefFormulierId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
   }
@@ -284,10 +342,11 @@ SMG: Algehele orde en netheid
     const tekst = document.getElementById('nvTekst').value.trim();
     const type = document.getElementById('nvType').value;
     const kritiek = document.getElementById('nvKritiek').checked;
+    const foto_optie = document.getElementById('nvFoto').checked;
     if(!tekst) return;
     const { data: bestaande } = await supabaseClient.from('wpi_vragen').select('volgorde').eq('formulier_id', actiefFormulierId).order('volgorde', { ascending:false }).limit(1);
     const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
-    const { error } = await supabaseClient.from('wpi_vragen').insert({ formulier_id: actiefFormulierId, tekst, type, kritiek, volgorde });
+    const { error } = await supabaseClient.from('wpi_vragen').insert({ formulier_id: actiefFormulierId, tekst, type, kritiek, foto_optie, volgorde });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
     await render();
   }
@@ -303,10 +362,12 @@ SMG: Algehele orde en netheid
 
     const rijen = regels.map(regel => {
       volgorde++;
-      let type = 'ja/nee', kritiek = false, tekst = regel;
-      if(/^kritiek:\s*/i.test(regel)){ kritiek = true; tekst = regel.replace(/^kritiek:\s*/i, ''); }
-      else if(/^smg:\s*/i.test(regel)){ type = 'slecht/matig/goed'; tekst = regel.replace(/^smg:\s*/i, ''); }
-      return { formulier_id: actiefFormulierId, tekst, type, kritiek, volgorde };
+      let type = 'ja/nee', kritiek = false, foto_optie = false, tekst = regel;
+      if(/^foto:?\s*/i.test(tekst)){ foto_optie = true; tekst = tekst.replace(/^foto:?\s*/i, ''); }
+      if(/^kritiek:\s*/i.test(tekst)){ kritiek = true; tekst = tekst.replace(/^kritiek:\s*/i, ''); }
+      else if(/^smg:\s*/i.test(tekst)){ type = 'slecht/matig/goed'; tekst = tekst.replace(/^smg:\s*/i, ''); }
+      else if(/^open:\s*/i.test(tekst)){ type = 'open'; tekst = tekst.replace(/^open:\s*/i, ''); }
+      return { formulier_id: actiefFormulierId, tekst, type, kritiek, foto_optie, volgorde };
     });
 
     const { error } = await supabaseClient.from('wpi_vragen').insert(rijen);
@@ -319,6 +380,142 @@ SMG: Algehele orde en netheid
     if(!confirm('Deze vraag verwijderen?')) return;
     const { error } = await supabaseClient.from('wpi_vragen').delete().eq('id', id);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  let actiefBezoekId = null;
+
+  async function renderBezoekenLijst(){
+    const { data: bezoeken, error } = await supabaseClient
+      .from('wpi_bezoeken').select('*, wpi_formulieren(naam, soort)').eq('afgerond', true).order('aangemaakt_op', { ascending:false }).limit(50);
+    if(error) return renderHoofdTabs() + '<div class="fout">Kon bezoeken niet laden: ' + error.message + '</div>';
+
+    const uitvoerderIds = [...new Set((bezoeken||[]).map(b=>b.uitvoerder_id))];
+    let uitvoerdersMap = {};
+    if(uitvoerderIds.length){
+      const { data: uitvoerders } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', uitvoerderIds);
+      (uitvoerders||[]).forEach(u => { uitvoerdersMap[u.id] = u; });
+    }
+
+    const rows = (bezoeken||[]).map(b => {
+      const u = uitvoerdersMap[b.uitvoerder_id];
+      return `
+      <div class="card klikbaar" onclick="openBezoek('${b.id}')">
+        <div class="row">
+          <b>${b.wpi_formulieren ? b.wpi_formulieren.naam : '—'}</b>
+          <span class="tag">${b.wpi_formulieren ? b.wpi_formulieren.soort.toUpperCase() : ''}</span>
+        </div>
+        <div class="meta" style="margin-top:6px">${u ? u.voornaam + ' ' + u.achternaam : '—'} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+      </div>`;
+    }).join('') || '<div class="meta">Nog geen afgeronde bezoeken.</div>';
+
+    return `
+      ${renderHoofdTabs()}
+      <div class="meta" style="margin-bottom:16px">Laatste 50 afgeronde WPI/MBB-bezoeken. Open een bezoek om alle antwoorden te bekijken en er eventueel een actie aan te koppelen.</div>
+      ${rows}
+    `;
+  }
+
+  async function openBezoek(id){
+    actiefBezoekId = id;
+    scherm = 'bezoekDetail';
+    await render();
+  }
+
+  async function renderBezoekDetail(){
+    const { data: b, error } = await supabaseClient.from('wpi_bezoeken').select('*, wpi_formulieren(naam, soort)').eq('id', actiefBezoekId).single();
+    if(error) return '<div class="fout">Kon bezoek niet laden: ' + error.message + '</div>';
+    const { data: uitvoerder } = await supabaseClient.from('profielen').select('voornaam, achternaam').eq('id', b.uitvoerder_id).single();
+    const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('*, wpi_vragen(tekst, type, kritiek, volgorde)').eq('bezoek_id', actiefBezoekId);
+    const gesorteerd = (antwoorden||[]).sort((a,b) => (a.wpi_vragen?.volgorde||0) - (b.wpi_vragen?.volgorde||0));
+
+    const antwoordIds = gesorteerd.map(a=>a.id);
+    let actiesMap = {};
+    if(antwoordIds.length){
+      const { data: acties } = await supabaseClient.from('wpi_antwoord_acties').select('*').in('antwoord_id', antwoordIds).order('aangemaakt_op');
+      (acties||[]).forEach(a => {
+        if(!actiesMap[a.antwoord_id]) actiesMap[a.antwoord_id] = [];
+        actiesMap[a.antwoord_id].push(a);
+      });
+    }
+    const toegewezenIds = [...new Set(Object.values(actiesMap).flat().map(a=>a.toegewezen_aan).filter(Boolean))];
+    let toegewezenMap = {};
+    if(toegewezenIds.length){
+      const { data: personen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', toegewezenIds);
+      (personen||[]).forEach(p => { toegewezenMap[p.id] = p; });
+    }
+    const { data: alleProfielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('in_dienst', true).order('voornaam');
+
+    const rows = gesorteerd.map(a => {
+      const v = a.wpi_vragen || {};
+      const acties = actiesMap[a.id] || [];
+      const actieRows = acties.map(ac => {
+        const p = ac.toegewezen_aan ? toegewezenMap[ac.toegewezen_aan] : null;
+        return `
+          <div class="meta" style="margin-top:6px; padding:8px; background:var(--bg); border-radius:6px;">
+            <b>${ac.afgerond ? '✓ ' : '⏳ '}${ac.omschrijving}</b><br>
+            ${p ? p.voornaam + ' ' + p.achternaam : 'niemand'} ${ac.deadline ? '· deadline ' + new Date(ac.deadline).toLocaleDateString('nl-NL') : ''}
+          </div>`;
+      }).join('');
+      return `
+        <div class="card">
+          <div class="row">
+            <span style="max-width:75%">${v.tekst || '—'}</span>
+            ${v.kritiek ? '<span class="tag" style="background:var(--red-dim); color:var(--red);">kritiek</span>' : ''}
+          </div>
+          <div class="meta" style="margin-top:6px">Antwoord: <b>${a.antwoord}</b> ${a.foto_pad ? '· 📷 foto bijgevoegd' : ''}</div>
+          ${actieRows}
+          <button class="ghost" style="margin-top:8px" onclick="toonActieFormulier('${a.id}')">+ Actie koppelen</button>
+          <div id="actieFormulier-${a.id}"></div>
+        </div>
+      `;
+    }).join('');
+
+    window._alleProfielenCache = alleProfielen || [];
+
+    return `
+      ${renderHoofdTabs()}
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar bezoeken</button>
+      <div class="card">
+        <b>${b.wpi_formulieren ? b.wpi_formulieren.naam : '—'}</b> <span class="tag">${b.wpi_formulieren ? b.wpi_formulieren.soort.toUpperCase() : ''}</span>
+        <div class="meta" style="margin-top:6px">${uitvoerder ? uitvoerder.voornaam + ' ' + uitvoerder.achternaam : '—'} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+      </div>
+      <div class="eyebrow" style="margin-top:16px">Antwoorden</div>
+      ${rows}
+    `;
+  }
+
+  function toonActieFormulier(antwoordId){
+    const el = document.getElementById('actieFormulier-' + antwoordId);
+    const profielen = window._alleProfielenCache || [];
+    el.innerHTML = `
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label style="margin-top:0">Omschrijving van de actie</label>
+        <input type="text" id="aoOmschrijving-${antwoordId}" placeholder="Bijv. 'Hekwerk herstellen'">
+        <label>Toewijzen aan</label>
+        <select id="aoToegewezen-${antwoordId}">
+          <option value="">— kies een persoon —</option>
+          ${profielen.map(p => `<option value="${p.id}">${p.voornaam} ${p.achternaam}</option>`).join('')}
+        </select>
+        <label>Deadline</label>
+        <input type="date" id="aoDeadline-${antwoordId}">
+        <button class="primary" style="margin-top:10px" onclick="opslaanActie('${antwoordId}')">Actie aanmaken</button>
+        <div class="fout verborgen" id="aoFout-${antwoordId}"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanActie(antwoordId){
+    const omschrijving = document.getElementById('aoOmschrijving-' + antwoordId).value.trim();
+    const toegewezen_aan = document.getElementById('aoToegewezen-' + antwoordId).value || null;
+    const deadline = document.getElementById('aoDeadline-' + antwoordId).value || null;
+    const foutEl = document.getElementById('aoFout-' + antwoordId);
+    foutEl.classList.add('verborgen');
+    if(!omschrijving){ foutEl.textContent = 'Omschrijving is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.from('wpi_antwoord_acties').insert({
+      organisatie_id: huidigProfiel.organisatie_id, antwoord_id: antwoordId, omschrijving, toegewezen_aan, deadline, aangemaakt_door: huidigProfiel.id
+    });
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     await render();
   }
 
