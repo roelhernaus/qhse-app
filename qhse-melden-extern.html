@@ -54,7 +54,7 @@
   <div class="locatie" id="locatieNaam">—</div>
   <div class="card">
     <label style="margin-top:0">Type</label>
-    <select id="mType">
+    <select id="mType" onchange="reageerOpType()">
       <option value="Onveilige situatie">Onveilige situatie</option>
       <option value="Incident">Incident</option>
       <option value="Verbetervoorstel">Verbetervoorstel</option>
@@ -62,15 +62,20 @@
     <label>Omschrijving</label>
     <textarea rows="5" id="mOmschrijving" placeholder="Beschrijf zo concreet mogelijk wat je hebt gezien of meegemaakt."></textarea>
 
-    <div class="checkbox-rij">
+    <div class="meta verborgen" id="mIncidentUitleg" style="margin-top:14px; padding:10px 12px; background:var(--accent-dim); border-radius:8px;">Bij een incident vragen we altijd om contactgegevens, voor eventuele terugkoppeling of onderzoek.</div>
+    <div class="checkbox-rij" id="mContactRij">
       <input type="checkbox" id="mContactGewenst" onchange="toggleContactVelden()">
       <label for="mContactGewenst">Neem contact met mij op</label>
     </div>
     <div id="contactVelden" class="contact-blok verborgen">
       <label style="margin-top:0">Naam</label>
       <input type="text" id="mNaam">
-      <label>Telefoon of e-mail</label>
-      <input type="text" id="mContact">
+      <label>Telefoonnummer</label>
+      <input type="tel" id="mTelefoon" placeholder="0612345678">
+      <div class="fout verborgen" id="mTelefoonFout" style="margin-top:4px; padding:6px 10px; font-size:12px;"></div>
+      <label>E-mailadres</label>
+      <input type="email" id="mEmail" placeholder="naam@voorbeeld.nl">
+      <div class="fout verborgen" id="mEmailFout" style="margin-top:4px; padding:6px 10px; font-size:12px;"></div>
     </div>
 
     <button class="primary" onclick="verstuurMelding()">Melding versturen</button>
@@ -91,6 +96,20 @@
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
 
   let locatie = null;
+
+  function reageerOpType(){
+    const isIncident = document.getElementById('mType').value === 'Incident';
+    const checkbox = document.getElementById('mContactGewenst');
+    document.getElementById('mIncidentUitleg').classList.toggle('verborgen', !isIncident);
+    document.getElementById('mContactRij').classList.toggle('verborgen', isIncident);
+    if(isIncident){
+      checkbox.checked = true;
+      checkbox.disabled = true;
+    } else {
+      checkbox.disabled = false;
+    }
+    toggleContactVelden();
+  }
 
   function toggleContactVelden(){
     document.getElementById('contactVelden').classList.toggle('verborgen', !document.getElementById('mContactGewenst').checked);
@@ -113,24 +132,57 @@
     document.getElementById('form-scherm').classList.remove('verborgen');
   }
 
+  function valideerTelefoon(waarde){
+    const opgeschoond = waarde.replace(/[\s-]/g, '');
+    return /^0\d{9}$/.test(opgeschoond);
+  }
+  function valideerEmail(waarde){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waarde);
+  }
+
   async function verstuurMelding(){
     const type = document.getElementById('mType').value;
     const omschrijving = document.getElementById('mOmschrijving').value.trim();
     const contactGewenst = document.getElementById('mContactGewenst').checked;
     const naam = contactGewenst ? document.getElementById('mNaam').value.trim() : null;
-    const contact = contactGewenst ? document.getElementById('mContact').value.trim() : null;
+    const telefoon = contactGewenst ? document.getElementById('mTelefoon').value.trim() : null;
+    const email = contactGewenst ? document.getElementById('mEmail').value.trim() : null;
     const foutEl = document.getElementById('mFout');
+    const telefoonFoutEl = document.getElementById('mTelefoonFout');
+    const emailFoutEl = document.getElementById('mEmailFout');
     foutEl.classList.add('verborgen');
+    telefoonFoutEl.classList.add('verborgen');
+    emailFoutEl.classList.add('verborgen');
 
     if(!omschrijving){ foutEl.textContent = 'Omschrijving is verplicht.'; foutEl.classList.remove('verborgen'); return; }
-    if(contactGewenst && (!naam || !contact)){ foutEl.textContent = 'Vul naam en contactgegevens in, of zet het vinkje weer uit.'; foutEl.classList.remove('verborgen'); return; }
+
+    if(contactGewenst){
+      if(!naam || !telefoon || !email){
+        foutEl.textContent = type === 'Incident'
+          ? 'Bij een incident zijn naam, telefoonnummer en e-mailadres verplicht.'
+          : 'Vul naam, telefoonnummer en e-mailadres in, of zet het vinkje weer uit.';
+        foutEl.classList.remove('verborgen');
+        return;
+      }
+      if(!valideerTelefoon(telefoon)){
+        telefoonFoutEl.textContent = 'Vul een geldig Nederlands telefoonnummer in (10 cijfers, begint met 0).';
+        telefoonFoutEl.classList.remove('verborgen');
+        return;
+      }
+      if(!valideerEmail(email)){
+        emailFoutEl.textContent = 'Vul een geldig e-mailadres in.';
+        emailFoutEl.classList.remove('verborgen');
+        return;
+      }
+    }
 
     const { error } = await supabaseClient.from('meldingen').insert({
       organisatie_id: locatie.organisatie_id,
       type, omschrijving,
       locatie_id: locatie.id,
       extern_naam: naam,
-      extern_contact: contact,
+      extern_telefoon: telefoon,
+      extern_email: email,
       melder_id: null
     });
     if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }

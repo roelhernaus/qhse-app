@@ -311,7 +311,7 @@
       </div>
       <div class="omschrijving">${m.omschrijving}</div>
       ${locatieNaam ? `<div class="meta" style="margin-top:4px">📍 ${locatieNaam}</div>` : ''}
-      ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_contact ? ' · ' + m.extern_contact : ''} — wil contact</div>` : ''}
+      ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_telefoon ? ' · ' + m.extern_telefoon : ''}${m.extern_email ? ' · ' + m.extern_email : ''} — wil contact</div>` : ''}
       <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : 'In behandeling'} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
       <div class="row" style="margin-top:12px">
         <span></span>
