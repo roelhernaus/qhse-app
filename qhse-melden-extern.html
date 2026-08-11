@@ -48,6 +48,13 @@
   </div>
 </div>
 
+<div id="wacht-scherm" class="wrap verborgen">
+  <div class="card" style="text-align:center">
+    <b>Je hebt net een melding verstuurd</b>
+    <p style="font-size:13px; color:var(--text-soft); margin-top:8px">Nog even geduld voordat je een nieuwe melding kan maken — dit voorkomt per ongeluk dubbel versturen.<br><span id="wachtTeller" style="font-weight:700; color:var(--text);"></span></p>
+  </div>
+</div>
+
 <div id="form-scherm" class="wrap verborgen">
   <div class="eyebrow">QHSE-systeem</div>
   <h1>Melding maken</h1>
@@ -115,6 +122,31 @@
     document.getElementById('contactVelden').classList.toggle('verborgen', !document.getElementById('mContactGewenst').checked);
   }
 
+  const AFKOELPERIODE_MS = 2 * 60 * 1000; // 2 minuten
+  const AFKOEL_SLEUTEL = 'qhse_laatste_melding';
+
+  function resterendeWachttijdMs(){
+    const laatste = parseInt(localStorage.getItem(AFKOEL_SLEUTEL) || '0', 10);
+    const verstreken = Date.now() - laatste;
+    return Math.max(0, AFKOELPERIODE_MS - verstreken);
+  }
+
+  function toonWachtteller(){
+    const interval = setInterval(() => {
+      const resterend = resterendeWachttijdMs();
+      if(resterend <= 0){
+        clearInterval(interval);
+        document.getElementById('wacht-scherm').classList.add('verborgen');
+        document.getElementById('form-scherm').classList.remove('verborgen');
+        return;
+      }
+      const seconden = Math.ceil(resterend / 1000);
+      const min = Math.floor(seconden / 60);
+      const sec = seconden % 60;
+      document.getElementById('wachtTeller').textContent = `Nog ${min}:${sec.toString().padStart(2,'0')}`;
+    }, 500);
+  }
+
   async function init(){
     const code = new URLSearchParams(window.location.search).get('locatie');
     document.getElementById('laad-scherm').style.display = 'none';
@@ -129,7 +161,13 @@
     }
     locatie = data;
     document.getElementById('locatieNaam').textContent = locatie.naam;
-    document.getElementById('form-scherm').classList.remove('verborgen');
+
+    if(resterendeWachttijdMs() > 0){
+      document.getElementById('wacht-scherm').classList.remove('verborgen');
+      toonWachtteller();
+    } else {
+      document.getElementById('form-scherm').classList.remove('verborgen');
+    }
   }
 
   function valideerTelefoon(waarde){
@@ -187,6 +225,7 @@
     });
     if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
 
+    localStorage.setItem(AFKOEL_SLEUTEL, Date.now().toString());
     document.getElementById('form-scherm').classList.add('verborgen');
     document.getElementById('succes-scherm').classList.remove('verborgen');
   }
