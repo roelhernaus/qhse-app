@@ -255,6 +255,12 @@
     lijstEl.innerHTML = kaarten.join('');
   }
 
+  async function bekijkMeldingFoto(pad){
+    const { data, error } = await supabaseClient.storage.from('meldingen-extern-fotos').createSignedUrl(pad, 300);
+    if(error){ alert('Kon foto niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
   async function renderKaart(m){
     const statusClass = m.status.replace(' ', '-');
     const nietToegewezen = !m.actiehouder_id;
@@ -312,6 +318,7 @@
       <div class="omschrijving">${m.omschrijving}</div>
       ${locatieNaam ? `<div class="meta" style="margin-top:4px">📍 ${locatieNaam}</div>` : ''}
       ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_telefoon ? ' · ' + m.extern_telefoon : ''}${m.extern_email ? ' · ' + m.extern_email : ''} — wil contact</div>` : ''}
+      ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkMeldingFoto('${m.foto_pad}')">📷 Foto bekijken</button>` : ''}
       <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : 'In behandeling'} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
       <div class="row" style="margin-top:12px">
         <span></span>

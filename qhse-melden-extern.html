@@ -85,6 +85,11 @@
       <div class="fout verborgen" id="mEmailFout" style="margin-top:4px; padding:6px 10px; font-size:12px;"></div>
     </div>
 
+    <label>Foto (optioneel, max 3MB)</label>
+    <input type="file" accept="image/*" capture="environment" id="mFoto" onchange="verwerkFoto(this)">
+    <div class="meta" id="mFotoStatus" style="margin-top:4px"></div>
+    <img id="mFotoPreview" style="display:none; width:100%; max-width:220px; border-radius:8px; margin-top:8px;">
+
     <button class="primary" onclick="verstuurMelding()">Melding versturen</button>
     <div class="fout verborgen" id="mFout"></div>
   </div>
@@ -120,6 +125,47 @@
 
   function toggleContactVelden(){
     document.getElementById('contactVelden').classList.toggle('verborgen', !document.getElementById('mContactGewenst').checked);
+  }
+
+  let gecomprimeerdeFotoBlob = null;
+
+  function verwerkFoto(inputEl){
+    const statusEl = document.getElementById('mFotoStatus');
+    const previewEl = document.getElementById('mFotoPreview');
+    gecomprimeerdeFotoBlob = null;
+    previewEl.style.display = 'none';
+    const file = inputEl.files[0];
+    if(!file) return;
+
+    statusEl.textContent = 'Foto verwerken…';
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    img.onload = () => {
+      const MAX_AFMETING = 1600;
+      let { width, height } = img;
+      if(width > MAX_AFMETING || height > MAX_AFMETING){
+        const schaal = MAX_AFMETING / Math.max(width, height);
+        width = Math.round(width * schaal);
+        height = Math.round(height * schaal);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if(blob.size > 3 * 1024 * 1024){
+          statusEl.textContent = 'Deze foto is ook na comprimeren te groot (max 3MB). Kies een andere foto.';
+          gecomprimeerdeFotoBlob = null;
+          inputEl.value = '';
+          return;
+        }
+        gecomprimeerdeFotoBlob = blob;
+        statusEl.textContent = `✓ Klaar (${(blob.size/1024/1024).toFixed(1)}MB)`;
+        previewEl.src = URL.createObjectURL(blob);
+        previewEl.style.display = 'block';
+      }, 'image/jpeg', 0.75);
+    };
+    reader.readAsDataURL(file);
   }
 
   const AFKOELPERIODE_MS = 2 * 60 * 1000; // 2 minuten
@@ -214,6 +260,13 @@
       }
     }
 
+    let fotoPad = null;
+    if(gecomprimeerdeFotoBlob){
+      fotoPad = `${locatie.organisatie_id}/${Date.now()}.jpg`;
+      const { error: fotoFout } = await supabaseClient.storage.from('meldingen-extern-fotos').upload(fotoPad, gecomprimeerdeFotoBlob);
+      if(fotoFout){ foutEl.textContent = 'Foto uploaden mislukt: ' + fotoFout.message; foutEl.classList.remove('verborgen'); return; }
+    }
+
     const { error } = await supabaseClient.from('meldingen').insert({
       organisatie_id: locatie.organisatie_id,
       type, omschrijving,
@@ -221,6 +274,7 @@
       extern_naam: naam,
       extern_telefoon: telefoon,
       extern_email: email,
+      foto_pad: fotoPad,
       melder_id: null
     });
     if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
