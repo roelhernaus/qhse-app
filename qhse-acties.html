@@ -224,7 +224,7 @@
       .eq('toegewezen_aan', huidigProfiel.id).eq('afgerond', false);
     if(wpiActies && wpiActies.length){
       const antwoordIds = [...new Set(wpiActies.map(a=>a.antwoord_id))];
-      const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('id, vraag_id, bezoek_id').in('id', antwoordIds);
+      const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('id, vraag_id, bezoek_id, antwoord').in('id', antwoordIds);
       const vraagIds = [...new Set((antwoorden||[]).map(a=>a.vraag_id))];
       const bezoekIds = [...new Set((antwoorden||[]).map(a=>a.bezoek_id))];
       const { data: vragen } = vraagIds.length ? await supabaseClient.from('wpi_vragen').select('id, tekst').in('id', vraagIds) : { data: [] };
@@ -245,7 +245,8 @@
         items.push({
           bron:'WPI/MBB',
           context: formulier ? formulier.naam : '',
-          omschrijving: a.omschrijving + (vraag ? ' (n.a.v.: ' + vraag.tekst + ')' : ''),
+          omschrijving: a.omschrijving,
+          vraagContext: vraag ? { vraag: vraag.tekst, antwoord: antw.antwoord } : null,
           deadline: a.deadline,
           afgerond:false,
           actieType:'wpi', actieId:a.id
@@ -319,6 +320,11 @@
         ${item.afgerond ? '<span class="tag" style="background:var(--green-dim); color:var(--green);">Afgerond</span>' : ''}
       </div>
       <div style="font-size:13px; margin-top:8px">${item.omschrijving || ''}</div>
+      ${item.vraagContext ? `
+        <div class="meta" style="margin-top:8px; padding:8px 10px; background:var(--bg); border-radius:8px;">
+          <b>${item.vraagContext.vraag}</b><br>Antwoord: ${item.vraagContext.antwoord}
+        </div>
+      ` : ''}
       ${item.deadline ? `<div class="meta" style="margin-top:6px">Deadline: ${new Date(item.deadline).toLocaleDateString('nl-NL')}</div>` : ''}
       ${!item.afgerond && item.actieType ? `<div class="row" style="margin-top:10px"><span></span><button class="ghost" onclick="voerActieUit('${item.actieType}','${item.actieId}')">Markeer afgerond</button></div>` : ''}
     </div>`;
