@@ -528,11 +528,11 @@ FOTO: Is er zichtbare schade aan het hekwerk?
       ${renderHoofdTabs()}
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='bezoekDetail'; render();">← Terug naar bezoek</button>
       <div class="callout">
-        Stel hieronder in wat er in het PDF-rapport komt te staan. De naam van de uitvoerder wordt standaard <b>niet</b> meegenomen.
+        Stel hieronder in wat er in het PDF-rapport komt te staan. De naam van de invuller wordt standaard <b>niet</b> meegenomen.
       </div>
       <div class="card">
         <label style="display:flex; align-items:center; gap:8px; margin:0">
-          <input type="checkbox" id="pdfToonUitvoerder" style="width:auto"> Naam van de uitvoerder tonen in het rapport
+          <input type="checkbox" id="pdfToonUitvoerder" style="width:auto"> Naam van de invuller tonen in het rapport
         </label>
       </div>
       <div class="eyebrow" style="margin-top:16px">Per antwoord censureren</div>
@@ -581,7 +581,7 @@ FOTO: Is er zichtbare schade aan het hekwerk?
         <h1>${bezoek.wpi_formulieren ? bezoek.wpi_formulieren.naam : 'Rapport'}</h1>
         <div class="meta">
           ${bezoek.wpi_formulieren ? bezoek.wpi_formulieren.soort.toUpperCase() : ''} · ${new Date(bezoek.aangemaakt_op).toLocaleDateString('nl-NL')}
-          ${toonUitvoerder && uitvoerder ? ' · Uitgevoerd door ' + uitvoerder.voornaam + ' ' + uitvoerder.achternaam : ''}
+          ${toonUitvoerder && uitvoerder ? ' · Ingevuld door ' + uitvoerder.voornaam + ' ' + uitvoerder.achternaam : ''}
         </div>
         <table>${rijenMetFoto.join('')}</table>
         ${kamOpmerking ? `<div class="opmerking"><b>Opmerking:</b><br>${kamOpmerking.replace(/\n/g,'<br>')}</div>` : ''}
