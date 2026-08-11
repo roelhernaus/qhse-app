@@ -146,6 +146,7 @@
     const inhoud = document.getElementById('inhoud');
     if(hoofdScherm === 'bezoeken'){
       if(scherm === 'bezoekDetail') inhoud.innerHTML = await renderBezoekDetail();
+      else if(scherm === 'pdfExport') inhoud.innerHTML = await renderPdfExport();
       else inhoud.innerHTML = await renderBezoekenLijst();
       return;
     }
@@ -496,10 +497,98 @@ FOTO: Is er zichtbare schade aan het hekwerk?
       <div class="card">
         <b>${b.wpi_formulieren ? b.wpi_formulieren.naam : '—'}</b> <span class="tag">${b.wpi_formulieren ? b.wpi_formulieren.soort.toUpperCase() : ''}</span>
         <div class="meta" style="margin-top:6px">${uitvoerder ? uitvoerder.voornaam + ' ' + uitvoerder.achternaam : '—'} · ${new Date(b.aangemaakt_op).toLocaleString('nl-NL')}</div>
+        <button class="ghost" style="margin-top:10px" onclick="scherm='pdfExport'; render();">📄 PDF exporteren</button>
       </div>
       <div class="eyebrow" style="margin-top:16px">Antwoorden</div>
       ${rows}
     `;
+  }
+
+  async function renderPdfExport(){
+    const { data: b } = await supabaseClient.from('wpi_bezoeken').select('*, wpi_formulieren(naam, soort)').eq('id', actiefBezoekId).single();
+    const { data: uitvoerder } = await supabaseClient.from('profielen').select('voornaam, achternaam').eq('id', b.uitvoerder_id).single();
+    const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('*, wpi_vragen(tekst, type, kritiek, volgorde)').eq('bezoek_id', actiefBezoekId);
+    const gesorteerd = (antwoorden||[]).sort((a,b) => (a.wpi_vragen?.volgorde||0) - (b.wpi_vragen?.volgorde||0));
+
+    window._pdfExportData = { bezoek: b, uitvoerder, antwoorden: gesorteerd };
+
+    const rows = gesorteerd.map((a,i) => `
+      <div class="card">
+        <div class="row">
+          <span style="max-width:75%">${a.wpi_vragen ? a.wpi_vragen.tekst : '—'}</span>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:0">
+            <input type="checkbox" id="censuur-${i}" style="width:auto"> Censureren
+          </label>
+        </div>
+        <div class="meta" style="margin-top:6px">Antwoord: ${a.antwoord}${a.foto_pad ? ' · 📷 foto bijgevoegd' : ''}</div>
+      </div>
+    `).join('');
+
+    return `
+      ${renderHoofdTabs()}
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='bezoekDetail'; render();">← Terug naar bezoek</button>
+      <div class="callout">
+        Stel hieronder in wat er in het PDF-rapport komt te staan. De naam van de uitvoerder wordt standaard <b>niet</b> meegenomen.
+      </div>
+      <div class="card">
+        <label style="display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="pdfToonUitvoerder" style="width:auto"> Naam van de uitvoerder tonen in het rapport
+        </label>
+      </div>
+      <div class="eyebrow" style="margin-top:16px">Per antwoord censureren</div>
+      ${rows}
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Opmerking van KAM (optioneel, verschijnt onderaan het rapport)</label>
+        <textarea id="pdfKamOpmerking" rows="4" placeholder="Bijv. toelichting, context, vervolgstappen…"></textarea>
+      </div>
+      <button class="primary" style="width:100%; margin-top:12px" onclick="genereerPdfRapport()">Rapport genereren (PDF)</button>
+    `;
+  }
+
+  async function genereerPdfRapport(){
+    const { bezoek, uitvoerder, antwoorden } = window._pdfExportData;
+    const toonUitvoerder = document.getElementById('pdfToonUitvoerder').checked;
+    const kamOpmerking = document.getElementById('pdfKamOpmerking').value.trim();
+
+    const rijenMetFoto = await Promise.all(antwoorden.map(async (a, i) => {
+      const gecensureerd = document.getElementById('censuur-' + i).checked;
+      let fotoImg = '';
+      if(a.foto_pad && !gecensureerd){
+        const { data } = await supabaseClient.storage.from('wpi-fotos').createSignedUrl(a.foto_pad, 600);
+        if(data) fotoImg = `<img src="${data.signedUrl}" style="max-width:260px; margin-top:8px; border-radius:6px; display:block;">`;
+      }
+      return `
+        <tr>
+          <td style="padding:10px; border-bottom:1px solid #ddd; vertical-align:top;">
+            <b>${a.wpi_vragen ? a.wpi_vragen.tekst : '—'}</b><br>
+            <span style="color:#555">${gecensureerd ? '[gecensureerd]' : a.antwoord}</span>
+            ${gecensureerd ? '' : fotoImg}
+          </td>
+        </tr>
+      `;
+    }));
+
+    const venster = window.open('', '_blank');
+    venster.document.write(`
+      <html><head><title>${bezoek.wpi_formulieren ? bezoek.wpi_formulieren.naam : 'Rapport'}</title>
+      <style>
+        body{ font-family: Arial, sans-serif; padding: 30px; color:#1c1d1b; max-width:800px; margin:0 auto; }
+        h1{ font-size:22px; margin-bottom:2px; }
+        .meta{ color:#666; font-size:13px; margin-bottom:24px; }
+        table{ width:100%; border-collapse:collapse; }
+        .opmerking{ margin-top:30px; padding:14px; background:#f4f5f3; border-radius:8px; font-size:13px; }
+      </style></head><body>
+        <h1>${bezoek.wpi_formulieren ? bezoek.wpi_formulieren.naam : 'Rapport'}</h1>
+        <div class="meta">
+          ${bezoek.wpi_formulieren ? bezoek.wpi_formulieren.soort.toUpperCase() : ''} · ${new Date(bezoek.aangemaakt_op).toLocaleDateString('nl-NL')}
+          ${toonUitvoerder && uitvoerder ? ' · Uitgevoerd door ' + uitvoerder.voornaam + ' ' + uitvoerder.achternaam : ''}
+        </div>
+        <table>${rijenMetFoto.join('')}</table>
+        ${kamOpmerking ? `<div class="opmerking"><b>Opmerking:</b><br>${kamOpmerking.replace(/\n/g,'<br>')}</div>` : ''}
+        <script>window.print();<\/script>
+      </body></html>
+    `);
+    venster.document.close();
   }
 
   function toonActieFormulier(antwoordId){
