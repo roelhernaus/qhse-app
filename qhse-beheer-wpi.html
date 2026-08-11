@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>QHSE — WPI &amp; MBB</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --red:#c0392b; --red-dim:#fbeae8;
+    --green:#1c9468; --green-dim:#d3f1e3; --amber:#b57a10; --amber-dim:#f6e3bd;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:680px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.ghost{ background:transparent; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .klikbaar{ cursor:pointer; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input, select, textarea{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit scherm is alleen voor Admin of KAM.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem — Beheer</div>
+      <h1>WPI &amp; MBB</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'formulier' | 'nieuw'
+  let soortActief = 'wpi'; // 'wpi' | 'mbb'
+  let actiefFormulierId = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    huidigProfiel = profiel;
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!['admin','kam'].includes(profiel.rol)){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
+    else if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
+    else if(scherm === 'formulier') inhoud.innerHTML = await renderFormulier();
+  }
+
+  function kiesSoort(soort){
+    soortActief = soort;
+    scherm = 'lijst';
+    render();
+  }
+
+  async function renderLijst(){
+    const { data: formulieren, error } = await supabaseClient.from('wpi_formulieren').select('*').eq('soort', soortActief).order('naam');
+    if(error) return '<div class="fout">Kon formulieren niet laden: ' + error.message + '</div>';
+    const rows = (formulieren||[]).map(f => `
+      <div class="card klikbaar" onclick="openFormulier('${f.id}')">
+        <div class="row">
+          <b>${f.naam}</b>
+          <span class="tag" style="${f.actief ? 'background:var(--green-dim); color:var(--green);' : ''}">${f.actief ? 'Actief' : 'Inactief'}</span>
+        </div>
+      </div>`).join('') || '<div class="meta">Nog geen formulieren.</div>';
+
+    return `
+      <div class="tabs">
+        <div class="tab ${soortActief==='wpi'?'actief':''}" onclick="kiesSoort('wpi')">WPI</div>
+        <div class="tab ${soortActief==='mbb'?'actief':''}" onclick="kiesSoort('mbb')">MBB</div>
+      </div>
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(formulieren||[]).length} formulieren</span>
+        <button class="primary" onclick="scherm='nieuw'; render();">+ Nieuw formulier</button>
+      </div>
+      ${rows}
+    `;
+  }
+
+  function renderNieuw(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam van het formulier</label>
+        <input type="text" id="nfNaam" placeholder="Bijv. 'Algemene werkplekinspectie'">
+        <div class="row" style="margin-top:16px">
+          <span></span>
+          <button class="primary" onclick="opslaanNieuwFormulier()">Aanmaken</button>
+        </div>
+        <div class="fout verborgen" id="nfFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanNieuwFormulier(){
+    const naam = document.getElementById('nfNaam').value.trim();
+    const foutEl = document.getElementById('nfFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const { data, error } = await supabaseClient.from('wpi_formulieren')
+      .insert({ organisatie_id: huidigProfiel.organisatie_id, naam, soort: soortActief }).select().single();
+    if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    actiefFormulierId = data.id;
+    scherm = 'formulier';
+    await render();
+  }
+
+  async function openFormulier(id){
+    actiefFormulierId = id;
+    scherm = 'formulier';
+    await render();
+  }
+
+  async function renderFormulier(){
+    const { data: f, error } = await supabaseClient.from('wpi_formulieren').select('*').eq('id', actiefFormulierId).single();
+    if(error) return '<div class="fout">Kon formulier niet laden: ' + error.message + '</div>';
+    const { data: vragen } = await supabaseClient.from('wpi_vragen').select('*').eq('formulier_id', actiefFormulierId).order('volgorde');
+
+    const vraagRows = (vragen||[]).map((v,i) => `
+      <div class="card row">
+        <span>${i+1}. ${v.tekst} ${v.kritiek ? '<span class="tag" style="margin-left:6px; background:var(--red-dim); color:var(--red);">⚠️ Kritiek</span>' : ''} ${v.type==='slecht/matig/goed' ? '<span class="tag" style="margin-left:6px">Slecht/Matig/Goed</span>' : ''}</span>
+        <button class="ghost" onclick="verwijderVraag('${v.id}')">Verwijderen</button>
+      </div>`).join('') || '<div class="meta">Nog geen vragen.</div>';
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="bfNaam" value="${f.naam}">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="bfActief" style="width:auto" ${f.actief?'checked':''}> Actief (zichtbaar om in te vullen)
+        </label>
+        <div class="row" style="margin-top:16px">
+          <button class="ghost" onclick="verwijderFormulier()">Verwijderen</button>
+          <button class="primary" onclick="opslaanFormulier()">Opslaan</button>
+        </div>
+        <div class="fout verborgen" id="bfFout"></div>
+        <div class="melding verborgen" id="bfMelding"></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Vragen</div>
+      ${vraagRows}
+
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Nieuwe vraag (één tegelijk)</label>
+        <input type="text" id="nvTekst" placeholder="Bijv. 'Is de werkplek vrij van obstakels?'">
+        <label>Type</label>
+        <select id="nvType">
+          <option value="ja/nee">Ja / Nee</option>
+          <option value="slecht/matig/goed">Slecht / Matig / Goed</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
+          <input type="checkbox" id="nvKritiek" style="width:auto"> Kritieke vraag (bij "Nee" wordt direct een melding aangemaakt)
+        </label>
+        <button class="ghost" style="margin-top:10px" onclick="voegVraagToe()">+ Toevoegen</button>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Meerdere tegelijk plakken (één vraag per regel)</label>
+        <textarea id="bulkVragen" rows="6" placeholder="Is de werkplek vrij van obstakels?
+Zijn vluchtwegen vrij?
+KRITIEK: Is de nooduitgang bereikbaar?
+SMG: Algehele orde en netheid
+..."></textarea>
+        <div class="meta" style="margin-top:4px">Zet <b>KRITIEK:</b> voor een regel voor een kritieke ja/nee-vraag. Zet <b>SMG:</b> voor een Slecht/Matig/Goed-vraag. Niets ervoor = gewone Ja/Nee-vraag.</div>
+        <button class="primary" style="margin-top:10px" onclick="voegBulkVragenToe()">+ Alle regels toevoegen</button>
+        <div class="fout verborgen" id="bulkFout"></div>
+      </div>
+    `;
+  }
+
+  async function opslaanFormulier(){
+    const naam = document.getElementById('bfNaam').value.trim();
+    const actief = document.getElementById('bfActief').checked;
+    const foutEl = document.getElementById('bfFout');
+    const meldingEl = document.getElementById('bfMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.from('wpi_formulieren').update({ naam, actief }).eq('id', actiefFormulierId);
+    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+  }
+
+  async function verwijderFormulier(){
+    if(!confirm('Dit formulier, inclusief alle vragen, definitief verwijderen? Eerder ingevulde bezoeken op basis van dit formulier blijven wel bewaard.')) return;
+    const { error } = await supabaseClient.from('wpi_formulieren').delete().eq('id', actiefFormulierId);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    scherm = 'lijst';
+    await render();
+  }
+
+  async function voegVraagToe(){
+    const tekst = document.getElementById('nvTekst').value.trim();
+    const type = document.getElementById('nvType').value;
+    const kritiek = document.getElementById('nvKritiek').checked;
+    if(!tekst) return;
+    const { data: bestaande } = await supabaseClient.from('wpi_vragen').select('volgorde').eq('formulier_id', actiefFormulierId).order('volgorde', { ascending:false }).limit(1);
+    const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
+    const { error } = await supabaseClient.from('wpi_vragen').insert({ formulier_id: actiefFormulierId, tekst, type, kritiek, volgorde });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function voegBulkVragenToe(){
+    const foutEl = document.getElementById('bulkFout');
+    foutEl.classList.add('verborgen');
+    const regels = document.getElementById('bulkVragen').value.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+    if(!regels.length){ foutEl.textContent = 'Plak eerst één of meer regels.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { data: bestaande } = await supabaseClient.from('wpi_vragen').select('volgorde').eq('formulier_id', actiefFormulierId).order('volgorde', { ascending:false }).limit(1);
+    let volgorde = bestaande && bestaande.length ? bestaande[0].volgorde : 0;
+
+    const rijen = regels.map(regel => {
+      volgorde++;
+      let type = 'ja/nee', kritiek = false, tekst = regel;
+      if(/^kritiek:\s*/i.test(regel)){ kritiek = true; tekst = regel.replace(/^kritiek:\s*/i, ''); }
+      else if(/^smg:\s*/i.test(regel)){ type = 'slecht/matig/goed'; tekst = regel.replace(/^smg:\s*/i, ''); }
+      return { formulier_id: actiefFormulierId, tekst, type, kritiek, volgorde };
+    });
+
+    const { error } = await supabaseClient.from('wpi_vragen').insert(rijen);
+    if(error){ foutEl.textContent = 'Toevoegen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    document.getElementById('bulkVragen').value = '';
+    await render();
+  }
+
+  async function verwijderVraag(id){
+    if(!confirm('Deze vraag verwijderen?')) return;
+    const { error } = await supabaseClient.from('wpi_vragen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>
