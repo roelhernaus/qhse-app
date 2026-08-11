@@ -224,7 +224,7 @@
       .eq('toegewezen_aan', huidigProfiel.id).eq('afgerond', false);
     if(wpiActies && wpiActies.length){
       const antwoordIds = [...new Set(wpiActies.map(a=>a.antwoord_id))];
-      const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('id, vraag_id, bezoek_id, antwoord').in('id', antwoordIds);
+      const { data: antwoorden } = await supabaseClient.from('wpi_antwoorden').select('id, vraag_id, bezoek_id, antwoord, foto_pad').in('id', antwoordIds);
       const vraagIds = [...new Set((antwoorden||[]).map(a=>a.vraag_id))];
       const bezoekIds = [...new Set((antwoorden||[]).map(a=>a.bezoek_id))];
       const { data: vragen } = vraagIds.length ? await supabaseClient.from('wpi_vragen').select('id, tekst').in('id', vraagIds) : { data: [] };
@@ -246,7 +246,7 @@
           bron:'WPI/MBB',
           context: formulier ? formulier.naam : '',
           omschrijving: a.omschrijving,
-          vraagContext: vraag ? { vraag: vraag.tekst, antwoord: antw.antwoord } : null,
+          vraagContext: vraag ? { vraag: vraag.tekst, antwoord: antw.antwoord, fotoPad: antw.foto_pad || null } : null,
           deadline: a.deadline,
           afgerond:false,
           actieType:'wpi', actieId:a.id
@@ -313,6 +313,12 @@
     return items;
   }
 
+  async function bekijkWpiFoto(pad){
+    const { data, error } = await supabaseClient.storage.from('wpi-fotos').createSignedUrl(pad, 300);
+    if(error){ alert('Kon foto niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
   function renderActieKaart(item){
     return `<div class="card">
       <div class="row">
@@ -323,6 +329,7 @@
       ${item.vraagContext ? `
         <div class="meta" style="margin-top:8px; padding:8px 10px; background:var(--bg); border-radius:8px;">
           <b>${item.vraagContext.vraag}</b><br>Antwoord: ${item.vraagContext.antwoord}
+          ${item.vraagContext.fotoPad ? `<div style="margin-top:6px"><button class="ghost" style="padding:5px 10px; font-size:12px" onclick="bekijkWpiFoto('${item.vraagContext.fotoPad}')">📷 Foto bekijken</button></div>` : ''}
         </div>
       ` : ''}
       ${item.deadline ? `<div class="meta" style="margin-top:6px">Deadline: ${new Date(item.deadline).toLocaleDateString('nl-NL')}</div>` : ''}
