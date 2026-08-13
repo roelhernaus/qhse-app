@@ -164,6 +164,7 @@
           </div>
           <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) in dienst · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
           <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
+          <button class="ghost" style="margin-top:6px" onclick="maakAudittrailLeeg('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
         </div>`;
     }));
 
@@ -184,6 +185,13 @@
     const { error } = await supabaseClient.from('organisaties').update({ actief: nieuweStatus }).eq('id', orgId);
     if(error){ alert('Wijzigen mislukt: ' + error.message); return; }
     await render();
+  }
+
+  async function maakAudittrailLeeg(orgId, orgNaam){
+    if(!confirm(`De audittrail van "${orgNaam}" volledig leegmaken? Dit is onomkeerbaar.`)) return;
+    const { error } = await supabaseClient.from('audit_log').delete().eq('organisatie_id', orgId);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    alert('Audittrail leeggemaakt.');
   }
 
   function renderNieuw(){
