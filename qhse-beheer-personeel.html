@@ -545,7 +545,7 @@
   async function nieuweUitnodiging(){
     if(uitnodigingType === 'intern'){
       const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true })
-        .eq('organisatie_id', huidigProfiel.organisatie_id).eq('in_dienst', true);
+        .eq('organisatie_id', huidigProfiel.organisatie_id).eq('in_dienst', true).neq('rol', 'extern');
       if(PAKKETGRENZEN.includes(count)){
         const doorgaan = confirm(
           `Dit wordt account nummer ${count + 1} — daarmee kom je in een hoger pakket terecht, wat extra kosten met zich meebrengt.\n\n` +

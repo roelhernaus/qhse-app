@@ -65,6 +65,14 @@
   </div>
 </div>
 
+<div id="account-inactief" class="wrap verborgen">
+  <div class="card">
+    <b>Dit account is niet (meer) actief</b>
+    <p class="meta" style="margin-top:8px">Neem contact op als je denkt dat dit niet klopt.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
 <div id="app-scherm" class="wrap verborgen">
   <div class="topbar">
     <div>
@@ -109,6 +117,7 @@
     await supabaseClient.auth.signOut();
     document.getElementById('app-scherm').classList.add('verborgen');
     document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('account-inactief').classList.add('verborgen');
     document.getElementById('login-scherm').classList.remove('verborgen');
   }
 
@@ -116,12 +125,16 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(profiel.in_dienst === false){
+      document.getElementById('account-inactief').classList.remove('verborgen');
+      return;
+    }
     huidigProfiel = profiel;
     supabaseClient.from('organisaties').select('accentkleur').eq('id', profiel.organisatie_id).single()
       .then(({ data: kleurOrg }) => { if(kleurOrg && kleurOrg.accentkleur){ document.documentElement.style.setProperty('--accent', kleurOrg.accentkleur); } });
-    document.getElementById('login-scherm').classList.add('verborgen');
     if(profiel.rol !== 'extern'){
       document.getElementById('geen-toegang').classList.remove('verborgen');
       return;
