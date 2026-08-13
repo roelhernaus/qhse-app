@@ -485,7 +485,7 @@
         ${(vragen||[]).length === 0 ? `
           <div class="meta" style="margin-top:10px">Deze toolbox heeft nog geen controlevragen — voeg die eerst toe bij de toolbox zelf in de Bibliotheek.</div>
         ` : `
-          <button class="primary" style="margin-top:10px" onclick="verstuurControlevragen('${s.toolbox_id}', ${JSON.stringify(interneDeelnemers.map(d=>d.profiel_id))})">📨 Controlevragen versturen naar deze deelnemers</button>
+          <button class="primary" style="margin-top:10px" onclick="verstuurControlevragen('${s.toolbox_id}')">📨 Controlevragen versturen naar deze deelnemers</button>
         `}
       </div>
       <div class="eyebrow" style="margin-top:20px">Eerder verstuurd</div>
@@ -493,7 +493,9 @@
     `;
   }
 
-  async function verstuurControlevragen(toolboxId, profielIds){
+  async function verstuurControlevragen(toolboxId){
+    const { data: deelnemers } = await supabaseClient.from('toolbox_deelnemers').select('profiel_id').eq('sessie_id', actieveSessieId);
+    const profielIds = (deelnemers||[]).map(d=>d.profiel_id).filter(Boolean);
     if(!profielIds.length){ alert('Geen interne deelnemers om naar te versturen.'); return; }
     const { data: controle, error } = await supabaseClient.from('toolbox_controles').insert({
       organisatie_id: huidigProfiel.organisatie_id, toolbox_id: toolboxId, sessie_id: actieveSessieId, aangemaakt_door: huidigProfiel.id

@@ -375,7 +375,8 @@
     if(neeKnop) neeKnop.classList.toggle('actief', waarde === 'nee');
   }
 
-  async function verstuurControleAntwoorden(actieId, vragenInfo){
+  async function verstuurControleAntwoorden(actieId){
+    const vragenInfo = controleVragenCache[actieId] || [];
     const gegeven = controleAntwoorden[actieId] || {};
     const verplichtVragen = vragenInfo.filter(v => v.type !== 'open');
     const verplichtIndexen = vragenInfo.map((v,i) => v.type !== 'open' ? i : null).filter(i => i !== null);
@@ -403,7 +404,12 @@
     await render();
   }
 
+  let controleVragenCache = {};
+
   function renderActieKaart(item){
+    if(item.controleVragen){
+      controleVragenCache[item.actieId] = item.controleVragen.map(v => ({ id:v.id, juist:v.juist_antwoord, type:v.type }));
+    }
     return `<div class="card">
       <div class="row">
         <span class="tag">${item.bron}${item.context ? ' · ' + item.context : ''}</span>
@@ -434,7 +440,7 @@
               </div>
             </div>
           `).join('')}
-          <button class="primary" style="width:100%; margin-top:10px" onclick="verstuurControleAntwoorden('${item.actieId}', ${JSON.stringify(item.controleVragen.map(v=>({id:v.id, juist:v.juist_antwoord, type:v.type})))})">Antwoorden versturen</button>
+          <button class="primary" style="width:100%; margin-top:10px" onclick="verstuurControleAntwoorden('${item.actieId}')">Antwoorden versturen</button>
         </div>
       ` : ''}
       <div class="row" style="margin-top:10px">
