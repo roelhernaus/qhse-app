@@ -177,7 +177,7 @@
           </div>
           <div style="text-align:right">
             <span class="tag rol-${p.rol}">${p.rol}</span>
-            ${!p.in_dienst ? '<div class="tag uit-dienst" style="margin-top:4px">Uit dienst</div>' : ''}
+            ${!p.in_dienst ? '<div class="tag uit-dienst" style="margin-top:4px">Inactief</div>' : ''}
           </div>
         </div>
       </div>`).join('') || '<div class="meta">Nog geen medewerkers.</div>';
@@ -229,8 +229,9 @@
           ${ROLLEN.map(r => `<option value="${r}" ${p.rol===r?'selected':''}>${r}</option>`).join('')}
         </select>
         <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
-          <input type="checkbox" id="bewInDienst" style="width:auto" ${p.in_dienst?'checked':''}> In dienst
+          <input type="checkbox" id="bewInDienst" style="width:auto" ${p.in_dienst?'checked':''}> Account actief
         </label>
+        <div class="meta" style="margin-top:2px">Staat dit uit, dan kan deze persoon niet meer inloggen en telt diegene niet meer mee in het medewerkersaantal — alle historie blijft gewoon bewaard.</div>
         <label>Datum in dienst</label>
         <input type="date" id="bewDatumInDienst" value="${p.datum_in_dienst || ''}">
         <label>Datum uit dienst (indien van toepassing)</label>

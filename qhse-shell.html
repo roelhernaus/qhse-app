@@ -160,7 +160,7 @@
 
 <div id="inactiefScherm" style="display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:24px;">
   <div style="max-width:380px;">
-    <h2 style="font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:10px;">Deze omgeving is tijdelijk niet beschikbaar</h2>
+    <h2 id="inactiefTitel" style="font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:10px;">Deze omgeving is tijdelijk niet beschikbaar</h2>
     <p style="font-size:14px; color:var(--text-secondary); line-height:1.6;">Neem contact op met AppVoorVeiligheid als je denkt dat dit niet klopt.</p>
     <button onclick="uitloggenInactief()" style="margin-top:20px; padding:10px 20px; border-radius:8px; border:1px solid var(--border); background:transparent; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600;">Uitloggen</button>
   </div>
@@ -402,8 +402,15 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+
+    if(profiel.in_dienst === false){
+      document.getElementById('inactiefTitel').textContent = 'Dit account is niet (meer) actief';
+      document.getElementById('loginScherm').style.display = 'none';
+      document.getElementById('inactiefScherm').style.display = 'flex';
+      return;
+    }
 
     if(profiel.rol === 'extern'){
       window.location.href = 'qhse-extern.html';
@@ -415,6 +422,7 @@
     const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur, actief').eq('id', profiel.organisatie_id).single();
 
     if(org && org.actief === false){
+      document.getElementById('inactiefTitel').textContent = 'Deze omgeving is tijdelijk niet beschikbaar';
       document.getElementById('loginScherm').style.display = 'none';
       document.getElementById('inactiefScherm').style.display = 'flex';
       return;
