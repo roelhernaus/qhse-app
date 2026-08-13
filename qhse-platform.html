@@ -171,6 +171,8 @@
           <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) in dienst · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
           <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
           <button class="ghost" style="margin-top:6px" onclick="maakAudittrailLeeg('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
+          <button class="ghost" style="margin-top:6px" onclick="verwijderAfgehandeldeMeldingen('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Afgehandelde meldingen + chats wissen</button>
+          <button class="ghost" style="margin-top:6px" onclick="verwijderWpiFormulieren('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">WPI/MBB-formulieren wissen</button>
           <button class="ghost" style="margin-top:6px" onclick="toonPiekPerMaand('${org.id}', this)">📊 Facturering per maand</button>
           <div class="piek-tabel" style="margin-top:8px; display:none;"></div>
         </div>`;
@@ -200,6 +202,20 @@
     const { error } = await supabaseClient.from('audit_log').delete().eq('organisatie_id', orgId);
     if(error){ alert('Mislukt: ' + error.message); return; }
     alert('Audittrail leeggemaakt.');
+  }
+
+  async function verwijderAfgehandeldeMeldingen(orgId, orgNaam){
+    if(!confirm(`Alle afgehandelde meldingen van "${orgNaam}" verwijderen? De bijbehorende chats verdwijnen automatisch mee. Dit is onomkeerbaar, en open meldingen blijven gewoon staan.`)) return;
+    const { error } = await supabaseClient.from('meldingen').delete().eq('organisatie_id', orgId).eq('status', 'Afgehandeld');
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    alert('Afgehandelde meldingen (en hun chats) verwijderd.');
+  }
+
+  async function verwijderWpiFormulieren(orgId, orgNaam){
+    if(!confirm(`ALLE WPI- en MBB-formulieren van "${orgNaam}" verwijderen (inclusief hun vragen)? Eerder ingevulde bezoeken blijven bewaard, maar verliezen de koppeling naar het formulier. Dit is onomkeerbaar.`)) return;
+    const { error } = await supabaseClient.from('wpi_formulieren').delete().eq('organisatie_id', orgId);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    alert('WPI/MBB-formulieren verwijderd.');
   }
 
   async function toonPiekPerMaand(orgId, knop){
