@@ -149,6 +149,10 @@
       .from('organisaties').select('*').order('aangemaakt_op', { ascending:false });
     if(error) return '<div class="fout">Kon klanten niet laden: ' + error.message + '</div>';
 
+    const { data: klantnummers } = await supabaseClient.from('klantnummers').select('*');
+    const klantnummerMap = {};
+    (klantnummers||[]).forEach(k => { klantnummerMap[k.organisatie_id] = k.klantnummer; });
+
     const rows = await Promise.all((organisaties||[]).map(async (org) => {
       const { data: countData } = await supabaseClient.rpc('platform_tel_medewerkers', { p_org_id: org.id, p_alleen_in_dienst: true });
       const count = countData;
@@ -157,7 +161,8 @@
         <div class="card" style="${!isActief ? 'opacity:.6' : ''}">
           <div class="row">
             <div>
-              <b>${org.naam}</b>
+              <span class="meta" style="font-family:monospace; font-weight:600;">#${klantnummerMap[org.id] ?? '—'}</span>
+              <b style="margin-left:8px">${org.naam}</b>
               ${org.app_naam ? `<span class="meta"> · ${org.app_naam}</span>` : ''}
               ${!isActief ? '<span class="tag" style="background:#fbeae8; color:#c0392b; margin-left:6px;">Inactief</span>' : ''}
             </div>
@@ -267,7 +272,8 @@
     });
     if(uitnodigingFout){ foutEl.textContent = 'Klant aangemaakt, maar uitnodiging genereren mislukt: ' + uitnodigingFout.message; foutEl.classList.remove('verborgen'); return; }
 
-    laatstAangemaakteKlant = { naam, code };
+    const { data: klantnummerData } = await supabaseClient.from('klantnummers').select('klantnummer').eq('organisatie_id', org.id).maybeSingle();
+    laatstAangemaakteKlant = { naam, code, klantnummer: klantnummerData ? klantnummerData.klantnummer : null };
     scherm = 'succes';
     await render();
   }
@@ -284,7 +290,7 @@
     const registratieUrl = `${APP_URL}/qhse-registreren.html`;
     return `
       <div class="melding">
-        ✓ <b>${k.naam}</b> is aangemaakt.<br><br>
+        ✓ <b>${k.naam}</b>${k.klantnummer ? ` (klantnummer #${k.klantnummer})` : ''} is aangemaakt.<br><br>
         Geef de nieuwe klant deze link en code, waarmee zij hun eerste admin-account aanmaken:<br><br>
         <b>Link:</b> ${registratieUrl}<br>
         <b>Code:</b> <span style="font-family:monospace; font-size:15px;">${k.code}</span><br><br>
