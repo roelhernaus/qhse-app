@@ -154,6 +154,7 @@
 
     const { data: sessies, error: sesFout } = await supabaseClient
       .from('toolbox_sessies').select('*, toolbox_bibliotheek(naam), profielen(voornaam, achternaam)')
+      .eq('gever_id', huidigProfiel.id)
       .order('datum', { ascending:false }).limit(15);
     if(sesFout) return '<div class="fout">Kon geschiedenis niet laden: ' + sesFout.message + '</div>';
 
@@ -183,7 +184,7 @@
     return `
       <div class="eyebrow" style="margin-top:4px">Bibliotheek</div>
       ${bibRows}
-      <div class="eyebrow" style="margin-top:22px">Recent gegeven</div>
+      <div class="eyebrow" style="margin-top:22px">Door jou recent gegeven</div>
       ${sesRows}
     `;
   }

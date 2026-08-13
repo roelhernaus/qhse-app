@@ -442,8 +442,13 @@
   let actieveSessieId = null;
 
   async function renderSessiesLijst(){
-    const { data: sessies, error } = await supabaseClient
-      .from('toolbox_sessies').select('*, toolbox_bibliotheek(naam)').order('datum', { ascending:false }).limit(50);
+    const datumVan = (document.getElementById('sessiesDatumVan') || {}).value || '';
+    const datumTot = (document.getElementById('sessiesDatumTot') || {}).value || '';
+    let query = supabaseClient
+      .from('toolbox_sessies').select('*, toolbox_bibliotheek(naam), profielen(voornaam, achternaam)').order('datum', { ascending:false }).limit(50);
+    if(datumVan) query = query.gte('datum', datumVan);
+    if(datumTot) query = query.lte('datum', datumTot + 'T23:59:59');
+    const { data: sessies, error } = await query;
     if(error) return renderHoofdTabs() + '<div class="fout">Kon sessies niet laden: ' + error.message + '</div>';
     const rows = (sessies||[]).map(s => `
       <div class="card klikbaar" onclick="actieveSessieId='${s.id}'; scherm='sessieDetail'; render();">
@@ -451,9 +456,21 @@
           <b>${s.toolbox_bibliotheek ? s.toolbox_bibliotheek.naam : '—'}</b>
           <span class="meta">${new Date(s.datum).toLocaleDateString('nl-NL')}</span>
         </div>
-      </div>`).join('') || '<div class="meta">Nog geen sessies.</div>';
+        <div class="meta" style="margin-top:4px">Gegeven door ${s.profielen ? s.profielen.voornaam + ' ' + s.profielen.achternaam : 'onbekend'}</div>
+      </div>`).join('') || '<div class="meta">Geen sessies gevonden.</div>';
     return `
       ${renderHoofdTabs()}
+      <div class="row" style="gap:10px; margin-bottom:16px; align-items:flex-end;">
+        <div style="flex:1">
+          <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Van</label>
+          <input type="date" id="sessiesDatumVan" value="${datumVan}" onchange="render()">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Tot</label>
+          <input type="date" id="sessiesDatumTot" value="${datumTot}" onchange="render()">
+        </div>
+        <button class="ghost" onclick="document.getElementById('sessiesDatumVan').value=''; document.getElementById('sessiesDatumTot').value=''; render();">Wissen</button>
+      </div>
       <div class="meta" style="margin-bottom:16px">Laatste 50 toolbox-sessies. Open een sessie om controlevragen te versturen naar de deelnemers.</div>
       ${rows}
     `;
