@@ -265,7 +265,7 @@
   }
 
   async function toonPiekPerMaand(orgId, knop){
-    const tabelEl = knop.nextElementSibling;
+    const tabelEl = knop.closest('.row').nextElementSibling;
     if(tabelEl.style.display === 'block'){ tabelEl.style.display = 'none'; return; }
     tabelEl.style.display = 'block';
     tabelEl.innerHTML = '<div class="meta">Laden…</div>';
