@@ -160,7 +160,7 @@
 
   <div class="eyebrow">Gevarenpictogrammen (CLP)</div>
   <div class="card">
-    <div class="meta" style="margin-bottom:12px">Upload hier eenmalig de negen officiële CLP-gevarenpictogrammen (bijv. gedownload van de website van de Nederlandse Arbeidsinspectie). Deze worden daarna hergebruikt in elke WIK.</div>
+    <div class="meta" style="margin-bottom:12px">De negen officiële CLP-gevarenpictogrammen — deze zijn wettelijk vastgelegd en gelden voor iedereen, dus worden centraal beheerd (niet per bedrijf apart).</div>
     <div id="pictogrammenGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:12px;"></div>
   </div>
 
@@ -233,6 +233,7 @@
 
   let huidigProfiel = null;
   let huidigeOrganisatie = null;
+  let isPlatformBeheerder = false;
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -276,6 +277,8 @@
       .from('organisaties').select('*').eq('id', profiel.organisatie_id).single();
     if(orgFout){ alert('Kon organisatie niet laden: ' + orgFout.message); return; }
     huidigeOrganisatie = org;
+    const { data: pbCheck } = await supabaseClient.from('platform_beheerders').select('id').eq('profiel_id', profiel.id).maybeSingle();
+    isPlatformBeheerder = !!pbCheck;
     document.getElementById('bedrijfsnaam').value = org.naam || '';
     document.getElementById('appNaam').value = org.app_naam || '';
     document.getElementById('qrLogoCheckin').checked = org.qr_logo_checkin;
@@ -310,7 +313,7 @@
 
   async function ververPictogrammen(){
     const html = await Promise.all(PICTOGRAM_CODES.map(async (p) => {
-      const pad = `${huidigeOrganisatie.id}/${p.code}.png`;
+      const pad = `gedeeld/${p.code}.png`;
       const { data } = await supabaseClient.storage.from('clp-pictogrammen').createSignedUrl(pad, 300);
       const previewSrc = data ? data.signedUrl : '';
       return `
@@ -318,10 +321,12 @@
           ${previewSrc ? `<img src="${previewSrc}" style="width:100%; aspect-ratio:1; object-fit:contain;">` : `<div style="width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#fafaf9; border-radius:6px; font-size:11px; color:var(--text-soft);">Geen afbeelding</div>`}
           <div style="font-size:11px; font-weight:600; margin-top:6px">${p.code}</div>
           <div class="meta" style="font-size:10.5px">${p.label}</div>
-          <label class="ghost" style="display:inline-block; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:10.5px; font-weight:600; cursor:pointer; margin-top:6px;">
-            ${previewSrc ? 'Vervangen' : 'Uploaden'}
-            <input type="file" accept="image/*" style="display:none" onchange="uploadPictogram('${p.code}', this)">
-          </label>
+          ${isPlatformBeheerder ? `
+            <label class="ghost" style="display:inline-block; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:10.5px; font-weight:600; cursor:pointer; margin-top:6px;">
+              ${previewSrc ? 'Vervangen' : 'Uploaden'}
+              <input type="file" accept="image/*" style="display:none" onchange="uploadPictogram('${p.code}', this)">
+            </label>
+          ` : ''}
         </div>
       `;
     }));
@@ -331,7 +336,7 @@
   async function uploadPictogram(code, inputEl){
     const file = inputEl.files[0];
     if(!file) return;
-    const pad = `${huidigeOrganisatie.id}/${code}.png`;
+    const pad = `gedeeld/${code}.png`;
     const { error } = await supabaseClient.storage.from('clp-pictogrammen').upload(pad, file, { upsert: true });
     if(error){ alert('Upload mislukt: ' + error.message); return; }
     await ververPictogrammen();
