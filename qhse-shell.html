@@ -158,6 +158,14 @@
   </div>
 </div>
 
+<div id="inactiefScherm" style="display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:24px;">
+  <div style="max-width:380px;">
+    <h2 style="font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:10px;">Deze omgeving is tijdelijk niet beschikbaar</h2>
+    <p style="font-size:14px; color:var(--text-secondary); line-height:1.6;">Neem contact op met AppVoorVeiligheid als je denkt dat dit niet klopt.</p>
+    <button onclick="uitloggenInactief()" style="margin-top:20px; padding:10px 20px; border-radius:8px; border:1px solid var(--border); background:transparent; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600;">Uitloggen</button>
+  </div>
+</div>
+
 <div id="appShell">
   <nav id="rail">
     <div class="rail-header">
@@ -376,6 +384,12 @@
     document.getElementById('loginScherm').classList.remove('verborgen');
   }
 
+  async function uitloggenInactief(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('inactiefScherm').style.display = 'none';
+    document.getElementById('loginScherm').classList.remove('verborgen');
+  }
+
   function initialen(naam){
     return naam.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   }
@@ -398,7 +412,14 @@
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
-    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur').eq('id', profiel.organisatie_id).single();
+    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur, actief').eq('id', profiel.organisatie_id).single();
+
+    if(org && org.actief === false){
+      document.getElementById('loginScherm').style.display = 'none';
+      document.getElementById('inactiefScherm').style.display = 'flex';
+      return;
+    }
+
     uitgeschakeldeModules = (org && org.uitgeschakelde_modules) || [];
     huidigeTaal = (org && org.taal === 'en') ? 'en' : 'nl';
     pasVertalingenToe();

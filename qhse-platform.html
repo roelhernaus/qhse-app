@@ -150,17 +150,20 @@
     if(error) return '<div class="fout">Kon klanten niet laden: ' + error.message + '</div>';
 
     const rows = await Promise.all((organisaties||[]).map(async (org) => {
-      const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true }).eq('organisatie_id', org.id);
+      const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true }).eq('organisatie_id', org.id).eq('in_dienst', true);
+      const isActief = org.actief !== false;
       return `
-        <div class="card">
+        <div class="card" style="${!isActief ? 'opacity:.6' : ''}">
           <div class="row">
             <div>
               <b>${org.naam}</b>
               ${org.app_naam ? `<span class="meta"> · ${org.app_naam}</span>` : ''}
+              ${!isActief ? '<span class="tag" style="background:#fbeae8; color:#c0392b; margin-left:6px;">Inactief</span>' : ''}
             </div>
             <span class="tag" style="background:${org.accentkleur}22; color:${org.accentkleur};">●</span>
           </div>
-          <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+          <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) in dienst · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+          <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
         </div>`;
     }));
 
@@ -171,6 +174,16 @@
       </div>
       ${rows.join('') || '<div class="meta">Nog geen klanten.</div>'}
     `;
+  }
+
+  async function wisselActief(orgId, huidigActief){
+    const nieuweStatus = !huidigActief;
+    if(huidigActief){ // wordt nu inactief gezet
+      if(!confirm('Deze klant op inactief zetten? Iedereen van dit bedrijf kan dan niet meer inloggen, totdat je het weer terugzet. Er gaat niets verloren.')) return;
+    }
+    const { error } = await supabaseClient.from('organisaties').update({ actief: nieuweStatus }).eq('id', orgId);
+    if(error){ alert('Wijzigen mislukt: ' + error.message); return; }
+    await render();
   }
 
   function renderNieuw(){

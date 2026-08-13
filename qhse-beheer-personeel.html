@@ -539,7 +539,23 @@
     return code.slice(0,4) + '-' + code.slice(4);
   }
 
+  const PAKKETGRENZEN = [10, 50, 100, 250];
+
   async function nieuweUitnodiging(){
+    if(uitnodigingType === 'intern'){
+      const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true })
+        .eq('organisatie_id', huidigProfiel.organisatie_id).eq('in_dienst', true);
+      if(PAKKETGRENZEN.includes(count)){
+        const doorgaan = confirm(
+          `Dit wordt account nummer ${count + 1} — daarmee kom je in een hoger pakket terecht, wat extra kosten met zich meebrengt.\n\n` +
+          `Check voordat je doorgaat:\n` +
+          `• Zijn al je huidige accounts nog echt in gebruik? (medewerkers die uit dienst zijn kun je op inactief zetten, die tellen dan niet meer mee)\n` +
+          `• Is er mogelijk een nieuwe inkooporder (PO) nodig binnen jullie eigen organisatie?\n\n` +
+          `Toch doorgaan met het aanmaken van dit account?`
+        );
+        if(!doorgaan) return;
+      }
+    }
     const omschrijving = document.getElementById('uiOmschrijving').value.trim() || null;
     const code = genereerCode();
     const payload = { organisatie_id: huidigProfiel.organisatie_id, code, omschrijving, aangemaakt_door: huidigProfiel.id };
