@@ -546,7 +546,7 @@
           <div class="meta" style="margin-top:6px">${a.fabrikant || 'fabrikant onbekend'} · aangevraagd door ${a.profielen ? a.profielen.voornaam + ' ' + a.profielen.achternaam : '—'}</div>
           <div style="font-size:13px; margin-top:6px">${a.omschrijving || ''}</div>
           ${fotoLink}
-          ${a.status==='nieuw' ? `<div class="row" style="margin-top:10px"><span></span><button class="primary" onclick="markeerAfgehandeld('${a.id}')">Markeer afgehandeld</button></div>` : ''}
+          ${a.status==='nieuw' ? `<div class="row" style="margin-top:10px"><span></span><button class="primary" onclick="markeerAfgehandeld('${a.id}')">Markeer afgehandeld</button></div>` : `<div class="row" style="margin-top:10px"><span></span><button class="ghost" onclick="verwijderAanvraag('${a.id}')">Verwijderen</button></div>`}
         </div>`;
     }));
     return rows.join('') || '<div class="meta">Nog geen aanvragen.</div>';
@@ -562,6 +562,13 @@
     const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
     const { error } = await supabaseClient.from('stof_aanvragen').update({ status: 'afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', id);
     if(error){ alert('Afhandelen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderAanvraag(id){
+    if(!confirm('Deze afgehandelde aanvraag definitief verwijderen? Dit wordt vastgelegd in de audittrail.')) return;
+    const { error } = await supabaseClient.from('stof_aanvragen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await render();
   }
 
