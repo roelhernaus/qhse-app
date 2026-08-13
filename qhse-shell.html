@@ -409,6 +409,7 @@
     if(org){
       const weergaveNaam = org.app_naam || org.naam || 'QHSE-systeem';
       document.getElementById('railNaam').innerHTML = weergaveNaam.replace(/ /g, '<br>');
+      document.title = weergaveNaam;
       if(org.logo_pad){
         const { data: logoData } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(org.logo_pad, 3600);
         if(logoData){
