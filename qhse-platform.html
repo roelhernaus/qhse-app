@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>AppVoorVeiligheid — Platformbeheer</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --red:#c0392b; --red-dim:#fbeae8;
+    --green:#1c9468; --green-dim:#d3f1e3; --goud:#f7b500;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.ghost{ background:transparent; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .klikbaar{ cursor:pointer; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:14px; padding:16px; border-radius:10px; line-height:1.6; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  input[type=color]{ padding:3px; height:42px; cursor:pointer; }
+  .platform-badge{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--goud); margin-bottom:6px; }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="platform-badge">★ Platformbeheer</div>
+  <div class="eyebrow">AppVoorVeiligheid</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Dit account is geen platformbeheerder. Log in met een gewoon account via de reguliere app.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="platform-badge">★ Platformbeheer</div>
+      <div class="eyebrow">AppVoorVeiligheid</div>
+      <h1>Klanten</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  const APP_URL = "https://mijn.appvoorveiligheid.nl";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'nieuw' | 'succes'
+  let laatstAangemaakteKlant = null;
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('geen-toegang').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam').eq('id', user.id).single();
+    if(error){
+      document.getElementById('login-scherm').classList.add('verborgen');
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    huidigProfiel = profiel;
+    const { data: pbCheck } = await supabaseClient.from('platform_beheerders').select('id').eq('profiel_id', profiel.id).maybeSingle();
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(!pbCheck){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
+    else if(scherm === 'succes') inhoud.innerHTML = renderSucces();
+    else inhoud.innerHTML = await renderLijst();
+  }
+
+  async function renderLijst(){
+    const { data: organisaties, error } = await supabaseClient
+      .from('organisaties').select('*').order('aangemaakt_op', { ascending:false });
+    if(error) return '<div class="fout">Kon klanten niet laden: ' + error.message + '</div>';
+
+    const rows = await Promise.all((organisaties||[]).map(async (org) => {
+      const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true }).eq('organisatie_id', org.id);
+      return `
+        <div class="card">
+          <div class="row">
+            <div>
+              <b>${org.naam}</b>
+              ${org.app_naam ? `<span class="meta"> · ${org.app_naam}</span>` : ''}
+            </div>
+            <span class="tag" style="background:${org.accentkleur}22; color:${org.accentkleur};">●</span>
+          </div>
+          <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+        </div>`;
+    }));
+
+    return `
+      <div class="row" style="margin-bottom:16px">
+        <span class="meta">${(organisaties||[]).length} klanten</span>
+        <button class="primary" onclick="scherm='nieuw'; render();">+ Nieuwe klant</button>
+      </div>
+      ${rows.join('') || '<div class="meta">Nog geen klanten.</div>'}
+    `;
+  }
+
+  function renderNieuw(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Het gespreide bedje</div>
+        <div class="meta" style="margin-bottom:14px">Deze instellingen kan de klant later altijd zelf aanpassen via Instellingen — dit is puur om ze meteen met hun eigen uitstraling te laten beginnen.</div>
+        <label style="margin-top:0">Bedrijfsnaam</label>
+        <input type="text" id="nkBedrijfsnaam" placeholder="Bijv. 'Bouwbedrijf De Vries B.V.'">
+        <label>Appnaam (optioneel, zichtbaar in de schil)</label>
+        <input type="text" id="nkAppnaam" placeholder="Bijv. 'QHSE De Vries', laat leeg voor de bedrijfsnaam">
+        <label>Accentkleur</label>
+        <input type="color" id="nkAccentkleur" value="#2f6f5e">
+        <label>Logo (optioneel)</label>
+        <input type="file" id="nkLogo" accept="image/png,image/jpeg">
+        <button class="primary" style="margin-top:16px; width:100%" onclick="maakKlantAan()">Klant aanmaken</button>
+        <div class="fout verborgen" id="nkFout"></div>
+      </div>
+    `;
+  }
+
+  async function maakKlantAan(){
+    const naam = document.getElementById('nkBedrijfsnaam').value.trim();
+    const app_naam = document.getElementById('nkAppnaam').value.trim() || null;
+    const accentkleur = document.getElementById('nkAccentkleur').value;
+    const logoFile = document.getElementById('nkLogo').files[0];
+    const foutEl = document.getElementById('nkFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Bedrijfsnaam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+
+    const { data: org, error: orgFout } = await supabaseClient
+      .from('organisaties').insert({ naam, app_naam, accentkleur }).select().single();
+    if(orgFout){ foutEl.textContent = 'Aanmaken mislukt: ' + orgFout.message; foutEl.classList.remove('verborgen'); return; }
+
+    if(logoFile){
+      const ext = logoFile.name.split('.').pop();
+      const logoPad = `${org.id}/logo-${Date.now()}.${ext}`;
+      const { error: logoFout } = await supabaseClient.storage.from('organisatie-branding').upload(logoPad, logoFile);
+      if(!logoFout){
+        await supabaseClient.from('organisaties').update({ logo_pad: logoPad }).eq('id', org.id);
+      }
+    }
+
+    const code = genereerCode();
+    const { error: uitnodigingFout } = await supabaseClient.from('interne_uitnodigingen').insert({
+      organisatie_id: org.id, code, rol: 'admin', omschrijving: 'Eerste admin-account', aangemaakt_door: huidigProfiel.id
+    });
+    if(uitnodigingFout){ foutEl.textContent = 'Klant aangemaakt, maar uitnodiging genereren mislukt: ' + uitnodigingFout.message; foutEl.classList.remove('verborgen'); return; }
+
+    laatstAangemaakteKlant = { naam, code };
+    scherm = 'succes';
+    await render();
+  }
+
+  function genereerCode(){
+    const tekens = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for(let i=0; i<8; i++) code += tekens[Math.floor(Math.random()*tekens.length)];
+    return code.slice(0,4) + '-' + code.slice(4);
+  }
+
+  function renderSucces(){
+    const k = laatstAangemaakteKlant;
+    const registratieUrl = `${APP_URL}/qhse-registreren.html`;
+    return `
+      <div class="melding">
+        ✓ <b>${k.naam}</b> is aangemaakt.<br><br>
+        Geef de nieuwe klant deze link en code, waarmee zij hun eerste admin-account aanmaken:<br><br>
+        <b>Link:</b> ${registratieUrl}<br>
+        <b>Code:</b> <span style="font-family:monospace; font-size:15px;">${k.code}</span><br><br>
+        <button class="ghost" onclick="kopieerBericht('${registratieUrl}', '${k.code}')">📋 Kopieer link + code</button>
+      </div>
+      <button class="ghost" style="margin-top:16px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+    `;
+  }
+
+  function kopieerBericht(url, code){
+    navigator.clipboard.writeText(`Welkom bij AppVoorVeiligheid! Maak je eerste (admin-)account aan via: ${url}\n\nJe uitnodigingscode is: ${code}`);
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>
