@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>AppVoorVeiligheid — Wachtwoord resetten</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); display:flex; align-items:center; justify-content:center; }
+  .wrap{ max-width:380px; width:100%; padding:20px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; margin:0 0 18px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input{ width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; background:#fafaf9; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:none; padding:11px; font-size:14px; font-weight:700; width:100%; margin-top:16px; background:var(--accent); color:#fff; }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13.5px; padding:14px; border-radius:10px; line-height:1.5; }
+  .terug{ display:block; text-align:center; margin-top:16px; font-size:13px; color:var(--text-soft); text-decoration:none; }
+  .verborgen{ display:none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="eyebrow">AppVoorVeiligheid</div>
+
+  <div id="stap-aanvragen">
+    <h1>Wachtwoord vergeten</h1>
+    <div class="card">
+      <label style="margin-top:0">E-mailadres</label>
+      <input type="email" id="resetEmail">
+      <button onclick="vraagResetAan()">Verstuur reset-link</button>
+      <div class="fout verborgen" id="aanvraagFout"></div>
+      <div class="melding verborgen" id="aanvraagMelding"></div>
+    </div>
+    <a href="qhse-shell.html" class="terug">← Terug naar inloggen</a>
+  </div>
+
+  <div id="stap-nieuw-wachtwoord" class="verborgen">
+    <h1>Nieuw wachtwoord instellen</h1>
+    <div class="card">
+      <label style="margin-top:0">Nieuw wachtwoord</label>
+      <input type="password" id="nieuwWachtwoord" placeholder="Minimaal 6 tekens, met cijfer of leesteken">
+      <button onclick="stelNieuwWachtwoordIn()">Wachtwoord instellen</button>
+      <div class="fout verborgen" id="nieuwFout"></div>
+    </div>
+  </div>
+
+  <div id="stap-klaar" class="verborgen">
+    <div class="melding">✓ Je wachtwoord is aangepast. Je kunt nu inloggen met je nieuwe wachtwoord.</div>
+    <a href="qhse-shell.html" class="terug">→ Naar het inlogscherm</a>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  async function vraagResetAan(){
+    const email = document.getElementById('resetEmail').value.trim();
+    const foutEl = document.getElementById('aanvraagFout');
+    const meldingEl = document.getElementById('aanvraagMelding');
+    foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
+    if(!email){ foutEl.textContent = 'Vul je e-mailadres in.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+    if(error){ foutEl.textContent = 'Mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    meldingEl.textContent = '✓ Als dit e-mailadres bij een account hoort, is er een reset-link naartoe gestuurd. Check ook je spam-map.';
+    meldingEl.classList.remove('verborgen');
+  }
+
+  async function stelNieuwWachtwoordIn(){
+    const nieuw = document.getElementById('nieuwWachtwoord').value;
+    const foutEl = document.getElementById('nieuwFout');
+    foutEl.classList.add('verborgen');
+    if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
+      foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn, met minstens 1 cijfer of leesteken.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
+    const { error } = await supabaseClient.auth.updateUser({ password: nieuw });
+    if(error){ foutEl.textContent = 'Mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(user){
+      await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+    }
+    document.getElementById('stap-nieuw-wachtwoord').classList.add('verborgen');
+    document.getElementById('stap-klaar').classList.remove('verborgen');
+  }
+
+  // Supabase herkent automatisch het reset-token in de link uit de e-mail,
+  // en stuurt dan een PASSWORD_RECOVERY-event — daarop tonen we stap 2.
+  if(supabaseClient){
+    supabaseClient.auth.onAuthStateChange((event) => {
+      if(event === 'PASSWORD_RECOVERY'){
+        document.getElementById('stap-aanvragen').classList.add('verborgen');
+        document.getElementById('stap-nieuw-wachtwoord').classList.remove('verborgen');
+      }
+    });
+  }
+</script>
+</body>
+</html>

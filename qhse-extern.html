@@ -53,6 +53,7 @@
     <input type="password" id="loginWachtwoord">
     <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
     <div class="fout verborgen" id="loginFout"></div>
+    <a href="qhse-wachtwoord-resetten.html" style="display:block; text-align:center; margin-top:12px; font-size:12.5px; color:var(--text-soft); text-decoration:none;">Wachtwoord vergeten?</a>
   </div>
   <a href="qhse-registreren-extern.html" style="display:block; text-align:center; margin-top:14px; font-size:12.5px; color:var(--text-soft); text-decoration:none;">Nog geen account? Registreren met uitnodigingscode</a>
 </div>
@@ -69,6 +70,17 @@
   <div class="card">
     <b>Dit account is niet (meer) actief</b>
     <p class="meta" style="margin-top:8px">Neem contact op als je denkt dat dit niet klopt.</p>
+    <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
+  </div>
+</div>
+
+<div id="wachtwoord-verplicht" class="wrap verborgen">
+  <div class="card">
+    <b>Nieuw wachtwoord instellen</b>
+    <p class="meta" style="margin-top:8px">Om verder te gaan, moet je eerst een nieuw wachtwoord instellen.</p>
+    <input type="password" id="nieuwWachtwoordVeldExtern" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="margin-top:10px">
+    <button class="primary" style="margin-top:10px; width:100%" onclick="stelNieuwWachtwoordInExtern()">Wachtwoord instellen</button>
+    <div class="fout verborgen" id="nieuwWachtwoordFoutExtern"></div>
     <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
   </div>
 </div>
@@ -113,11 +125,29 @@
       foutEl.classList.remove('verborgen');
     }
   }
+  async function stelNieuwWachtwoordInExtern(){
+    const nieuw = document.getElementById('nieuwWachtwoordVeldExtern').value;
+    const foutEl = document.getElementById('nieuwWachtwoordFoutExtern');
+    foutEl.classList.add('verborgen');
+    if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
+      foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn, met minstens 1 cijfer of leesteken.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
+    const { error: updateFout } = await supabaseClient.auth.updateUser({ password: nieuw });
+    if(updateFout){ foutEl.textContent = 'Mislukt: ' + updateFout.message; foutEl.classList.remove('verborgen'); return; }
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+    document.getElementById('wachtwoord-verplicht').classList.add('verborgen');
+    await initApp();
+  }
+
   async function uitloggen(){
     await supabaseClient.auth.signOut();
     document.getElementById('app-scherm').classList.add('verborgen');
     document.getElementById('geen-toegang').classList.add('verborgen');
     document.getElementById('account-inactief').classList.add('verborgen');
+    document.getElementById('wachtwoord-verplicht').classList.add('verborgen');
     document.getElementById('login-scherm').classList.remove('verborgen');
   }
 
@@ -125,11 +155,23 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst, moet_wachtwoord_wijzigen, wachtwoord_laatst_gewijzigd').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     document.getElementById('login-scherm').classList.add('verborgen');
     if(profiel.in_dienst === false){
       document.getElementById('account-inactief').classList.remove('verborgen');
+      return;
+    }
+    const { data: orgVoorWachtwoord } = await supabaseClient.from('organisaties').select('wachtwoord_interval_maanden').eq('id', profiel.organisatie_id).single();
+    let wachtwoordVerplicht = profiel.moet_wachtwoord_wijzigen === true;
+    if(!wachtwoordVerplicht && orgVoorWachtwoord && orgVoorWachtwoord.wachtwoord_interval_maanden){
+      const laatst = new Date(profiel.wachtwoord_laatst_gewijzigd);
+      const grens = new Date();
+      grens.setMonth(grens.getMonth() - orgVoorWachtwoord.wachtwoord_interval_maanden);
+      if(laatst < grens) wachtwoordVerplicht = true;
+    }
+    if(wachtwoordVerplicht){
+      document.getElementById('wachtwoord-verplicht').classList.remove('verborgen');
       return;
     }
     huidigProfiel = profiel;

@@ -237,6 +237,11 @@
         <label>Datum uit dienst (indien van toepassing)</label>
         <input type="date" id="bewDatumUitDienst" value="${p.datum_uit_dienst || ''}">
         <div class="meta" style="margin-top:4px">Deze datums bepalen mee hoeveel WPI/MBB deze persoon "year to date" redelijkerwijs kan hebben gedaan in het Compliance-dashboard.</div>
+
+        <label style="margin-top:20px">Wachtwoord</label>
+        <div class="meta" style="margin-bottom:8px">Laatst gewijzigd: ${p.wachtwoord_laatst_gewijzigd ? new Date(p.wachtwoord_laatst_gewijzigd).toLocaleDateString('nl-NL') : 'onbekend'}${p.moet_wachtwoord_wijzigen ? ' · <b style="color:var(--red)">moet bij volgende keer inloggen wijzigen</b>' : ''}</div>
+        <button class="ghost" onclick="dwingWachtwoordAf('${p.id}')" ${p.moet_wachtwoord_wijzigen ? 'disabled' : ''}>${p.moet_wachtwoord_wijzigen ? 'Al afgedwongen' : 'Wachtwoordwijziging afdwingen'}</button>
+        <div class="meta" style="margin-top:4px">Deze persoon moet dan bij de eerstvolgende keer inloggen eerst een nieuw wachtwoord instellen, voordat de app verder toegankelijk is.</div>
         <label>WPI-streefaantal (leeg = organisatiestandaard)</label>
         <input type="number" id="bewWpiStreef" min="0" value="${p.wpi_streefaantal_override ?? ''}" placeholder="Standaard gebruiken">
         <label>MBB-streefaantal (leeg = organisatiestandaard)</label>
@@ -256,6 +261,13 @@
       <button class="primary" style="margin-bottom:10px" onclick="nieuweAanwijzing()">+ Aanwijzing toevoegen</button>
       ${aanwijzingenHtml}
     `;
+  }
+
+  async function dwingWachtwoordAf(id){
+    if(!confirm('Deze persoon moet dan bij de eerstvolgende keer inloggen eerst een nieuw wachtwoord instellen. Doorgaan?')) return;
+    const { error } = await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: true }).eq('id', id);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    await render();
   }
 
   async function opslaan(id){

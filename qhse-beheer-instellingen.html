@@ -125,6 +125,18 @@
     <div class="meta" style="margin-top:6px">Keuring-stickers zijn klein — een logo daarop staat standaard uit, omdat dat op een goedkope labelprinter het scannen kan bemoeilijken.</div>
   </div>
 
+  <div class="eyebrow">Wachtwoordbeleid</div>
+  <div class="card">
+    <label style="margin-top:0">Iedereen verplicht een nieuw wachtwoord laten instellen elke</label>
+    <select id="wachtwoordInterval" onchange="opslaanWachtwoordInterval()">
+      <option value="">Nooit automatisch (alleen handmatig per persoon)</option>
+      <option value="3">3 maanden</option>
+      <option value="6">6 maanden</option>
+      <option value="12">12 maanden</option>
+    </select>
+    <div class="meta" style="margin-top:6px">Geldt voor iedereen binnen de organisatie. Bij inloggen wordt gecontroleerd of iemands wachtwoord ouder is dan deze termijn — zo ja, dan moet diegene eerst een nieuw wachtwoord instellen.</div>
+  </div>
+
   <div class="eyebrow">Modules</div>
   <div class="card">
     <div class="meta" style="margin-bottom:10px">Bepaalt welke modules medewerkers als tegel te zien krijgen. In het Beheerdersdashboard blijft alles altijd zichtbaar voor jou, ongeacht deze instelling — zo kun je een module gerust alvast inrichten voordat je 'm openzet.</div>
@@ -297,6 +309,7 @@
     document.getElementById('qrLogoMelden').checked = org.qr_logo_melden;
     document.getElementById('qrLogoKeuring').checked = org.qr_logo_keuring;
     renderModuleVinkjes(org.uitgeschakelde_modules || []);
+    document.getElementById('wachtwoordInterval').value = org.wachtwoord_interval_maanden || '';
     document.getElementById('taalNl').classList.toggle('actief', (org.taal || 'nl') === 'nl');
     document.getElementById('taalEn').classList.toggle('actief', org.taal === 'en');
     document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
@@ -415,6 +428,13 @@
     const { error } = await supabaseClient.from('organisaties').update({ uitgeschakelde_modules }).eq('id', huidigeOrganisatie.id);
     if(error){ alert('Opslaan mislukt: ' + error.message); return; }
     huidigeOrganisatie.uitgeschakelde_modules = uitgeschakelde_modules;
+  }
+
+  async function opslaanWachtwoordInterval(){
+    const waarde = document.getElementById('wachtwoordInterval').value;
+    const wachtwoord_interval_maanden = waarde ? parseInt(waarde) : null;
+    const { error } = await supabaseClient.from('organisaties').update({ wachtwoord_interval_maanden }).eq('id', huidigeOrganisatie.id);
+    if(error){ alert('Opslaan mislukt: ' + error.message); return; }
   }
 
   async function kiesTaal(taal){

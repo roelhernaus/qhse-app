@@ -153,8 +153,20 @@
       <input type="password" id="loginWachtwoord">
       <button class="primary" style="width:100%; margin-top:16px" onclick="login()" id="btnInloggen">Inloggen</button>
       <div class="fout verborgen" id="loginFout"></div>
+      <a href="qhse-wachtwoord-resetten.html" style="display:block; text-align:center; margin-top:12px; font-size:12.5px; color:var(--text-secondary); text-decoration:none;">Wachtwoord vergeten?</a>
     </div>
     <a href="qhse-registreren.html" id="lnkRegistreren" style="display:block; text-align:center; margin-top:14px; font-size:12.5px; color:var(--text-secondary); text-decoration:none;">Nog geen account? Account aanmaken</a>
+  </div>
+</div>
+
+<div id="wachtwoordVerplichtScherm" style="display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:24px;">
+  <div style="max-width:360px; width:100%;">
+    <h2 style="font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:10px;">Nieuw wachtwoord instellen</h2>
+    <p style="font-size:13.5px; color:var(--text-secondary); line-height:1.6; margin-bottom:18px;">Om verder te gaan, moet je eerst een nieuw wachtwoord instellen.</p>
+    <input type="password" id="nieuwWachtwoordVeld" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; margin-bottom:10px;">
+    <button onclick="stelNieuwWachtwoordIn()" style="width:100%; padding:11px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif;">Wachtwoord instellen</button>
+    <div id="nieuwWachtwoordFout" style="display:none; margin-top:10px; font-size:13px; color:#c0392b; background:#fbeae8; padding:9px 11px; border-radius:8px;"></div>
+    <button onclick="uitloggen()" style="margin-top:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; cursor:pointer; font-family:'Inter',sans-serif; font-size:13px;">Uitloggen</button>
   </div>
 </div>
 
@@ -384,6 +396,23 @@
     document.getElementById('loginScherm').classList.remove('verborgen');
   }
 
+  async function stelNieuwWachtwoordIn(){
+    const nieuw = document.getElementById('nieuwWachtwoordVeld').value;
+    const foutEl = document.getElementById('nieuwWachtwoordFout');
+    foutEl.style.display = 'none';
+    if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
+      foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn, met minstens 1 cijfer of leesteken.';
+      foutEl.style.display = 'block';
+      return;
+    }
+    const { error: updateFout } = await supabaseClient.auth.updateUser({ password: nieuw });
+    if(updateFout){ foutEl.textContent = 'Mislukt: ' + updateFout.message; foutEl.style.display = 'block'; return; }
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+    document.getElementById('wachtwoordVerplichtScherm').style.display = 'none';
+    await initShell();
+  }
+
   async function uitloggenInactief(){
     await supabaseClient.auth.signOut();
     document.getElementById('inactiefScherm').style.display = 'none';
@@ -402,7 +431,7 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, in_dienst, moet_wachtwoord_wijzigen, wachtwoord_laatst_gewijzigd').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
 
     if(profiel.in_dienst === false){
@@ -419,12 +448,25 @@
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
-    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur, actief').eq('id', profiel.organisatie_id).single();
+    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur, actief, wachtwoord_interval_maanden').eq('id', profiel.organisatie_id).single();
 
     if(org && org.actief === false){
       document.getElementById('inactiefTitel').textContent = 'Deze omgeving is tijdelijk niet beschikbaar';
       document.getElementById('loginScherm').style.display = 'none';
       document.getElementById('inactiefScherm').style.display = 'flex';
+      return;
+    }
+
+    let wachtwoordVerplicht = profiel.moet_wachtwoord_wijzigen === true;
+    if(!wachtwoordVerplicht && org && org.wachtwoord_interval_maanden){
+      const laatst = new Date(profiel.wachtwoord_laatst_gewijzigd);
+      const grens = new Date();
+      grens.setMonth(grens.getMonth() - org.wachtwoord_interval_maanden);
+      if(laatst < grens) wachtwoordVerplicht = true;
+    }
+    if(wachtwoordVerplicht){
+      document.getElementById('loginScherm').style.display = 'none';
+      document.getElementById('wachtwoordVerplichtScherm').style.display = 'flex';
       return;
     }
 

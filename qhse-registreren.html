@@ -46,7 +46,7 @@
     <label>E-mailadres</label>
     <input type="email" id="regEmail">
     <label>Wachtwoord</label>
-    <input type="password" id="regWachtwoord" placeholder="Minimaal 6 tekens">
+    <input type="password" id="regWachtwoord" placeholder="Minimaal 6 tekens, met een cijfer of leesteken">
     <button class="primary" style="width:100%; margin-top:16px" onclick="registreer()">Account aanmaken</button>
     <div class="fout verborgen" id="regFout"></div>
   </div>
@@ -79,7 +79,7 @@
     if(!code){ foutEl.textContent = 'Uitnodigingscode is verplicht.'; foutEl.classList.remove('verborgen'); return; }
     if(!voornaam || !achternaam){ foutEl.textContent = 'Voor- en achternaam zijn verplicht.'; foutEl.classList.remove('verborgen'); return; }
     if(!email){ foutEl.textContent = 'E-mailadres is verplicht.'; foutEl.classList.remove('verborgen'); return; }
-    if(!wachtwoord || wachtwoord.length < 6){ foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; foutEl.classList.remove('verborgen'); return; }
+    if(!wachtwoord || wachtwoord.length < 6 || !/[0-9\W]/.test(wachtwoord)){ foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn, met minstens 1 cijfer of leesteken.'; foutEl.classList.remove('verborgen'); return; }
     if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
 
     try{
