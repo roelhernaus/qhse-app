@@ -150,7 +150,8 @@
     if(error) return '<div class="fout">Kon klanten niet laden: ' + error.message + '</div>';
 
     const rows = await Promise.all((organisaties||[]).map(async (org) => {
-      const { count } = await supabaseClient.from('profielen').select('*', { count:'exact', head:true }).eq('organisatie_id', org.id).eq('in_dienst', true).neq('rol', 'extern');
+      const { data: countData } = await supabaseClient.rpc('platform_tel_medewerkers', { p_org_id: org.id, p_alleen_in_dienst: true });
+      const count = countData;
       const isActief = org.actief !== false;
       return `
         <div class="card" style="${!isActief ? 'opacity:.6' : ''}">
