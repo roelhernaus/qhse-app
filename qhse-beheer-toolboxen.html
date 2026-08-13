@@ -382,36 +382,48 @@
     const { data: vragen } = await supabaseClient.from('toolbox_controlevragen').select('*').eq('toolbox_id', actiefId).order('volgorde');
     const rows = (vragen||[]).map((v,i) => `
       <div class="card row">
-        <span>${i+1}. ${v.vraag} <span class="meta">(juist: ${v.juist_antwoord})</span></span>
+        <span>${i+1}. ${v.vraag} ${v.type === 'open' ? '<span class="meta">(open vraag)</span>' : `<span class="meta">(juist: ${v.juist_antwoord})</span>`}</span>
         <button class="ghost" onclick="verwijderControlevraag('${v.id}')">Verwijderen</button>
       </div>`).join('') || '<div class="meta">Nog geen controlevragen voor deze toolbox.</div>';
 
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="hoofdScherm='bibliotheek'; scherm='bewerken'; render();">← Terug naar toolbox</button>
       <div class="eyebrow" style="margin-top:0">Controlevragen — ${toolbox ? toolbox.naam : ''}</div>
-      <div class="meta" style="margin-bottom:16px">Deze vragen kun je later versturen naar mensen die deze toolbox hebben bevestigd, om te checken of de inhoud is blijven hangen.</div>
+      <div class="meta" style="margin-bottom:16px">Combineer gerust een paar korte begripsvragen met open vragen om ervaring en verbeterpunten op te halen — zo voelt het als betrokkenheid, niet als een toets.</div>
       ${rows}
       <div class="card" style="margin-top:12px">
-        <label style="margin-top:0">Nieuwe vraag</label>
-        <input type="text" id="cvVraag" placeholder="Bijv. 'Moet je bij deze werkzaamheden een veiligheidsbril dragen?'">
-        <label>Juist antwoord</label>
-        <select id="cvJuistAntwoord">
-          <option value="ja">Ja</option>
-          <option value="nee">Nee</option>
+        <label style="margin-top:0">Type vraag</label>
+        <select id="cvType" onchange="toggleCvJuistAntwoord()">
+          <option value="ja/nee">Ja/Nee (begripsvraag)</option>
+          <option value="open">Open vraag (ervaring / verbeterpunt)</option>
         </select>
+        <label style="margin-top:0">Nieuwe vraag</label>
+        <input type="text" id="cvVraag" placeholder="Bijv. 'Moet je bij deze werkzaamheden een veiligheidsbril dragen?' of 'Wat zou je aan deze toolbox willen verbeteren?'">
+        <div id="cvJuistAntwoordBlok">
+          <label>Juist antwoord</label>
+          <select id="cvJuistAntwoord">
+            <option value="ja">Ja</option>
+            <option value="nee">Nee</option>
+          </select>
+        </div>
         <button class="ghost" style="margin-top:10px" onclick="voegControlevraagToe()">+ Toevoegen</button>
       </div>
     `;
   }
 
+  function toggleCvJuistAntwoord(){
+    document.getElementById('cvJuistAntwoordBlok').style.display = document.getElementById('cvType').value === 'open' ? 'none' : 'block';
+  }
+
   async function voegControlevraagToe(){
     const vraag = document.getElementById('cvVraag').value.trim();
-    const juist_antwoord = document.getElementById('cvJuistAntwoord').value;
+    const type = document.getElementById('cvType').value;
+    const juist_antwoord = type === 'open' ? null : document.getElementById('cvJuistAntwoord').value;
     if(!vraag) return;
     const { data: bestaande } = await supabaseClient.from('toolbox_controlevragen').select('volgorde').eq('toolbox_id', actiefId).order('volgorde', { ascending:false }).limit(1);
     const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
     const { error } = await supabaseClient.from('toolbox_controlevragen').insert({
-      organisatie_id: huidigProfiel.organisatie_id, toolbox_id: actiefId, vraag, type: 'ja/nee', juist_antwoord, volgorde
+      organisatie_id: huidigProfiel.organisatie_id, toolbox_id: actiefId, vraag, type, juist_antwoord, volgorde
     });
     if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
     await render();
@@ -506,14 +518,35 @@
       const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', profielIds);
       (profielen||[]).forEach(p => { profielenMap[p.id] = p; });
     }
+
+    const ontvangerIds = (ontvangers||[]).filter(o=>o.beantwoord).map(o=>o.id);
+    let antwoordenPerOntvanger = {};
+    if(ontvangerIds.length){
+      const { data: antwoorden } = await supabaseClient.from('toolbox_controle_antwoorden').select('*, toolbox_controlevragen(vraag, type)').in('ontvanger_id', ontvangerIds);
+      (antwoorden||[]).forEach(a => {
+        if(a.toolbox_controlevragen && a.toolbox_controlevragen.type === 'open'){
+          if(!antwoordenPerOntvanger[a.ontvanger_id]) antwoordenPerOntvanger[a.ontvanger_id] = [];
+          antwoordenPerOntvanger[a.ontvanger_id].push({ vraag: a.toolbox_controlevragen.vraag, antwoord: a.antwoord });
+        }
+      });
+    }
+
     const rows = (ontvangers||[]).map(o => {
       const p = profielenMap[o.profiel_id];
+      const openAntwoorden = antwoordenPerOntvanger[o.id] || [];
       return `
-        <div class="card row">
-          <span>${p ? p.voornaam + ' ' + p.achternaam : '—'}</span>
-          <span class="tag" style="${o.beantwoord ? (o.score === o.totaal ? 'background:var(--green-dim); color:var(--green);' : 'background:var(--amber-dim); color:var(--amber);') : ''}">
-            ${o.beantwoord ? o.score + '/' + o.totaal + ' goed' : 'Nog niet beantwoord'}
-          </span>
+        <div class="card">
+          <div class="row">
+            <span>${p ? p.voornaam + ' ' + p.achternaam : '—'}</span>
+            <span class="tag" style="${o.beantwoord ? (o.totaal > 0 && o.score === o.totaal ? 'background:var(--green-dim); color:var(--green);' : (o.totaal > 0 ? 'background:var(--amber-dim); color:var(--amber);' : '')) : ''}">
+              ${o.beantwoord ? (o.totaal > 0 ? o.score + '/' + o.totaal + ' goed' : 'Beantwoord') : 'Nog niet beantwoord'}
+            </span>
+          </div>
+          ${openAntwoorden.map(a => `
+            <div class="meta" style="margin-top:8px; padding:8px 10px; background:var(--bg); border-radius:8px;">
+              <b>${a.vraag}</b><br>${a.antwoord}
+            </div>
+          `).join('')}
         </div>`;
     }).join('') || '<div class="meta">Geen ontvangers.</div>';
 

@@ -369,27 +369,35 @@
   function kiesControleAntwoord(actieId, vraagIndex, waarde){
     if(!controleAntwoorden[actieId]) controleAntwoorden[actieId] = {};
     controleAntwoorden[actieId][vraagIndex] = waarde;
-    document.getElementById(`controleJa-${actieId}-${vraagIndex}`).classList.toggle('actief', waarde === 'ja');
-    document.getElementById(`controleNee-${actieId}-${vraagIndex}`).classList.toggle('actief', waarde === 'nee');
+    const jaKnop = document.getElementById(`controleJa-${actieId}-${vraagIndex}`);
+    const neeKnop = document.getElementById(`controleNee-${actieId}-${vraagIndex}`);
+    if(jaKnop) jaKnop.classList.toggle('actief', waarde === 'ja');
+    if(neeKnop) neeKnop.classList.toggle('actief', waarde === 'nee');
   }
 
   async function verstuurControleAntwoorden(actieId, vragenInfo){
     const gegeven = controleAntwoorden[actieId] || {};
-    if(Object.keys(gegeven).length < vragenInfo.length){
-      alert('Beantwoord eerst alle vragen.');
+    const verplichtVragen = vragenInfo.filter(v => v.type !== 'open');
+    const verplichtIndexen = vragenInfo.map((v,i) => v.type !== 'open' ? i : null).filter(i => i !== null);
+    const ontbrekend = verplichtIndexen.some(i => !gegeven[i]);
+    if(ontbrekend){
+      alert('Beantwoord in ieder geval de ja/nee-vragen — de open vragen zijn optioneel.');
       return;
     }
     let score = 0;
-    const antwoordRijen = vragenInfo.map((v, i) => {
-      const antwoord = gegeven[i];
-      const juist = antwoord === v.juist;
-      if(juist) score++;
-      return { ontvanger_id: actieId, vraag_id: v.id, antwoord, juist };
-    });
+    const antwoordRijen = vragenInfo
+      .map((v, i) => ({ v, antwoord: gegeven[i] }))
+      .filter(({ antwoord }) => antwoord !== undefined && antwoord !== '')
+      .map(({ v, antwoord }) => {
+        const isOpen = v.type === 'open';
+        const juist = isOpen ? true : antwoord === v.juist;
+        if(!isOpen && juist) score++;
+        return { ontvanger_id: actieId, vraag_id: v.id, antwoord, juist };
+      });
     const { error: antwoordFout } = await supabaseClient.from('toolbox_controle_antwoorden').insert(antwoordRijen);
     if(antwoordFout){ alert('Versturen mislukt: ' + antwoordFout.message); return; }
     const { error: ontvangerFout } = await supabaseClient.from('toolbox_controle_ontvangers').update({
-      beantwoord: true, score, totaal: vragenInfo.length, beantwoord_op: new Date().toISOString()
+      beantwoord: true, score, totaal: verplichtVragen.length, beantwoord_op: new Date().toISOString()
     }).eq('id', actieId);
     if(ontvangerFout){ alert('Opslaan mislukt: ' + ontvangerFout.message); return; }
     await render();
@@ -411,7 +419,13 @@
       ${item.deadline ? `<div class="meta" style="margin-top:6px">Deadline: ${new Date(item.deadline).toLocaleDateString('nl-NL')}</div>` : ''}
       ${item.controleVragen ? `
         <div id="controleBlok-${item.actieId}" style="margin-top:10px">
-          ${item.controleVragen.map((v,i) => `
+          <div class="meta">Fijn dat je erbij was — we horen graag hoe het was. Dit is geen toets, gewoon input om de toolboxen steeds beter te maken.</div>
+          ${item.controleVragen.map((v,i) => v.type === 'open' ? `
+            <div class="meta" style="margin-top:8px; padding:8px 10px; background:var(--bg); border-radius:8px;">
+              <b>${v.vraag}</b>
+              <textarea rows="3" style="width:100%; margin-top:6px; padding:8px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;" oninput="kiesControleAntwoord('${item.actieId}', ${i}, this.value)" placeholder="Jouw antwoord (optioneel)"></textarea>
+            </div>
+          ` : `
             <div class="meta" style="margin-top:8px; padding:8px 10px; background:var(--bg); border-radius:8px;">
               <b>${v.vraag}</b>
               <div class="row" style="margin-top:6px">
@@ -420,7 +434,7 @@
               </div>
             </div>
           `).join('')}
-          <button class="primary" style="width:100%; margin-top:10px" onclick="verstuurControleAntwoorden('${item.actieId}', ${JSON.stringify(item.controleVragen.map(v=>({id:v.id, juist:v.juist_antwoord})))})">Antwoorden versturen</button>
+          <button class="primary" style="width:100%; margin-top:10px" onclick="verstuurControleAntwoorden('${item.actieId}', ${JSON.stringify(item.controleVragen.map(v=>({id:v.id, juist:v.juist_antwoord, type:v.type})))})">Antwoorden versturen</button>
         </div>
       ` : ''}
       <div class="row" style="margin-top:10px">
