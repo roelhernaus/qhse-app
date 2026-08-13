@@ -92,6 +92,7 @@
   let huidigProfiel = null;
   let scherm = 'lijst'; // 'lijst' | 'nieuw' | 'succes'
   let laatstAangemaakteKlant = null;
+  let actieveKlant = null;
 
   async function login(){
     const email = document.getElementById('loginEmail').value.trim();
@@ -141,6 +142,7 @@
     const inhoud = document.getElementById('inhoud');
     if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
     else if(scherm === 'succes') inhoud.innerHTML = renderSucces();
+    else if(scherm === 'klantInstellingen') inhoud.innerHTML = renderKlantInstellingen();
     else inhoud.innerHTML = await renderLijst();
   }
 
@@ -169,13 +171,10 @@
             <span class="tag" style="background:${org.accentkleur}22; color:${org.accentkleur};">●</span>
           </div>
           <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) in dienst · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
-          <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
-          <button class="ghost" style="margin-top:6px" onclick="maakAudittrailLeeg('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
-          <button class="ghost" style="margin-top:6px" onclick="verwijderAfgehandeldeMeldingen('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Afgehandelde meldingen + chats wissen</button>
-          <button class="ghost" style="margin-top:6px" onclick="verwijderWpiFormulieren('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">WPI/MBB-formulieren + bezoeken wissen</button>
-          <button class="ghost" style="margin-top:6px" onclick="verwijderToolboxSessies('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Toolbox-sessies wissen</button>
-          <button class="ghost" style="margin-top:6px" onclick="verwijderLogboekEntries('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Logboek-entries wissen</button>
-          <button class="ghost" style="margin-top:6px" onclick="toonPiekPerMaand('${org.id}', this)">📊 Facturering per maand</button>
+          <div class="row" style="margin-top:10px; gap:8px;">
+            <button class="ghost" style="flex:1" onclick="toonPiekPerMaand('${org.id}', this)">📊 Facturering per maand</button>
+            <button class="primary" style="flex:1" onclick="actieveKlant={id:'${org.id}', naam:'${org.naam.replace(/'/g,"\\'")}', klantnummer:'${klantnummerMap[org.id] ?? '—'}', actief:${isActief}}; scherm='klantInstellingen'; render();">⚙️ Instellingen</button>
+          </div>
           <div class="piek-tabel" style="margin-top:8px; display:none;"></div>
         </div>`;
     }));
@@ -189,6 +188,31 @@
     `;
   }
 
+  function renderKlantInstellingen(){
+    const k = actieveKlant;
+    return `
+      <button class="ghost" style="margin-bottom:16px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card" style="margin-bottom:20px; background:var(--accent-dim); border-color:var(--accent);">
+        <div class="eyebrow" style="margin-top:0">Je bekijkt nu</div>
+        <div style="font-size:20px; font-weight:700;"><span style="font-family:monospace">#${k.klantnummer}</span> · ${k.naam}</div>
+      </div>
+
+      <div class="eyebrow">Toegang</div>
+      <div class="card">
+        <button class="ghost" style="width:100%" onclick="wisselActief('${k.id}', ${k.actief})">${k.actief ? 'Op inactief zetten' : 'Weer activeren'}</button>
+      </div>
+
+      <div class="eyebrow">Opruimen (testomgeving)</div>
+      <div class="card">
+        <button class="ghost" style="width:100%" onclick="maakAudittrailLeeg('${k.id}', '${k.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="verwijderAfgehandeldeMeldingen('${k.id}', '${k.naam.replace(/'/g,"\\'")}')">Afgehandelde meldingen + chats wissen</button>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="verwijderWpiFormulieren('${k.id}', '${k.naam.replace(/'/g,"\\'")}')">WPI/MBB-formulieren + bezoeken wissen</button>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="verwijderToolboxSessies('${k.id}', '${k.naam.replace(/'/g,"\\'")}')">Toolbox-sessies wissen</button>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="verwijderLogboekEntries('${k.id}', '${k.naam.replace(/'/g,"\\'")}')">Logboek-entries wissen</button>
+      </div>
+    `;
+  }
+
   async function wisselActief(orgId, huidigActief){
     const nieuweStatus = !huidigActief;
     if(huidigActief){ // wordt nu inactief gezet
@@ -196,6 +220,7 @@
     }
     const { error } = await supabaseClient.from('organisaties').update({ actief: nieuweStatus }).eq('id', orgId);
     if(error){ alert('Wijzigen mislukt: ' + error.message); return; }
+    if(actieveKlant && actieveKlant.id === orgId) actieveKlant.actief = nieuweStatus;
     await render();
   }
 
