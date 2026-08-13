@@ -166,6 +166,8 @@
           <div class="meta" style="margin-top:6px">${count ?? 0} medewerker(s) in dienst · sinds ${new Date(org.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
           <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
           <button class="ghost" style="margin-top:6px" onclick="maakAudittrailLeeg('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
+          <button class="ghost" style="margin-top:6px" onclick="toonPiekPerMaand('${org.id}', this)">📊 Facturering per maand</button>
+          <div class="piek-tabel" style="margin-top:8px; display:none;"></div>
         </div>`;
     }));
 
@@ -193,6 +195,28 @@
     const { error } = await supabaseClient.from('audit_log').delete().eq('organisatie_id', orgId);
     if(error){ alert('Mislukt: ' + error.message); return; }
     alert('Audittrail leeggemaakt.');
+  }
+
+  async function toonPiekPerMaand(orgId, knop){
+    const tabelEl = knop.nextElementSibling;
+    if(tabelEl.style.display === 'block'){ tabelEl.style.display = 'none'; return; }
+    tabelEl.style.display = 'block';
+    tabelEl.innerHTML = '<div class="meta">Laden…</div>';
+    const { data, error } = await supabaseClient.rpc('platform_piek_per_maand', { p_org_id: orgId, p_aantal_maanden: 12 });
+    if(error){ tabelEl.innerHTML = `<div class="meta">Kon niet laden: ${error.message}</div>`; return; }
+    if(!data || !data.length){ tabelEl.innerHTML = '<div class="meta">Nog geen gegevens.</div>'; return; }
+    const MAANDNAMEN = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+    tabelEl.innerHTML = `
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <thead><tr style="text-align:left; border-bottom:1px solid var(--border);"><th style="padding:4px 0;">Maand</th><th style="padding:4px 0;">Piek</th></tr></thead>
+        <tbody>
+          ${data.map(r => {
+            const d = new Date(r.maand);
+            return `<tr><td style="padding:3px 0;">${MAANDNAMEN[d.getMonth()]} ${d.getFullYear()}</td><td style="padding:3px 0; font-weight:600;">${r.piek}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
   }
 
   function renderNieuw(){
