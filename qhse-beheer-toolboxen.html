@@ -22,6 +22,9 @@
   .whoami{ font-size:12.5px; color:var(--text-soft); }
   button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
   button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tabs{ display:flex; gap:8px; }
+  .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
   button.ghost{ background:transparent; }
   button:disabled{ opacity:.5; cursor:not-allowed; }
   input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
@@ -146,10 +149,35 @@
     await render();
   }
 
+  let hoofdScherm = 'bibliotheek'; // 'bibliotheek' | 'sessies'
+
   async function render(){
     const inhoud = document.getElementById('inhoud');
+    if(hoofdScherm === 'sessies'){
+      if(scherm === 'sessieDetail') inhoud.innerHTML = await renderSessieDetail();
+      else if(scherm === 'controlevragenBeheer') inhoud.innerHTML = await renderControlevragenBeheer();
+      else if(scherm === 'controleResultaten') inhoud.innerHTML = await renderControleResultaten();
+      else inhoud.innerHTML = await renderSessiesLijst();
+      return;
+    }
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
     else if(scherm === 'bewerken') inhoud.innerHTML = await renderBewerken();
+    else if(scherm === 'controlevragenBeheer') inhoud.innerHTML = await renderControlevragenBeheer();
+  }
+
+  function kiesHoofdScherm(keuze){
+    hoofdScherm = keuze;
+    scherm = keuze === 'sessies' ? 'sessiesLijst' : 'lijst';
+    render();
+  }
+
+  function renderHoofdTabs(){
+    return `
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab ${hoofdScherm==='bibliotheek'?'actief':''}" onclick="kiesHoofdScherm('bibliotheek')">Bibliotheek</div>
+        <div class="tab ${hoofdScherm==='sessies'?'actief':''}" onclick="kiesHoofdScherm('sessies')">Sessies &amp; controlevragen</div>
+      </div>
+    `;
   }
 
   async function renderLijst(){
@@ -168,6 +196,7 @@
         <div class="meta" style="margin-top:6px">${t.pdf_pad ? '📄 Materiaal gekoppeld' : 'Nog geen materiaal'}</div>
       </div>`).join('') || '<div class="meta">Nog geen toolboxen.</div>';
     return `
+      ${renderHoofdTabs()}
       <div class="row" style="margin-bottom:16px">
         <span class="meta">${(bibliotheek||[]).length} toolboxen</span>
         <button class="primary" onclick="nieuweToolbox()">+ Nieuwe toolbox</button>
@@ -225,6 +254,7 @@
           <input type="checkbox" id="bewBevestiging" style="width:auto" ${t.vereist_bevestiging?'checked':''}> Ontvangers moeten ontvangst zelf bevestigen (via Mijn Acties)
         </label>
         <div class="meta" style="margin-top:4px">Staat dit aan, dan krijgt elke geregistreerde (interne) deelnemer een losse bevestigingstaak, bovenop de aanwezigheidsregistratie door de gever.</div>
+        <button class="ghost" style="margin-top:14px" onclick="actiefId='${t.id}'; scherm='controlevragenBeheer'; render();">✏️ Controlevragen beheren</button>
 
         <label>Toegewezen aan</label>
         <select id="bewKoppelType" onchange="toggleKoppelType()">
@@ -344,6 +374,155 @@
     statusEl.textContent = '✓ Geüpload.';
     document.getElementById('materiaalTekst').textContent = '📄 Materiaal gekoppeld';
     document.getElementById('materiaalKnopLabel').textContent = 'Vervangen';
+  }
+
+  // ==================== Controlevragen beheren ====================
+  async function renderControlevragenBeheer(){
+    const { data: toolbox } = await supabaseClient.from('toolbox_bibliotheek').select('naam').eq('id', actiefId).single();
+    const { data: vragen } = await supabaseClient.from('toolbox_controlevragen').select('*').eq('toolbox_id', actiefId).order('volgorde');
+    const rows = (vragen||[]).map((v,i) => `
+      <div class="card row">
+        <span>${i+1}. ${v.vraag} <span class="meta">(juist: ${v.juist_antwoord})</span></span>
+        <button class="ghost" onclick="verwijderControlevraag('${v.id}')">Verwijderen</button>
+      </div>`).join('') || '<div class="meta">Nog geen controlevragen voor deze toolbox.</div>';
+
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="hoofdScherm='bibliotheek'; scherm='bewerken'; render();">← Terug naar toolbox</button>
+      <div class="eyebrow" style="margin-top:0">Controlevragen — ${toolbox ? toolbox.naam : ''}</div>
+      <div class="meta" style="margin-bottom:16px">Deze vragen kun je later versturen naar mensen die deze toolbox hebben bevestigd, om te checken of de inhoud is blijven hangen.</div>
+      ${rows}
+      <div class="card" style="margin-top:12px">
+        <label style="margin-top:0">Nieuwe vraag</label>
+        <input type="text" id="cvVraag" placeholder="Bijv. 'Moet je bij deze werkzaamheden een veiligheidsbril dragen?'">
+        <label>Juist antwoord</label>
+        <select id="cvJuistAntwoord">
+          <option value="ja">Ja</option>
+          <option value="nee">Nee</option>
+        </select>
+        <button class="ghost" style="margin-top:10px" onclick="voegControlevraagToe()">+ Toevoegen</button>
+      </div>
+    `;
+  }
+
+  async function voegControlevraagToe(){
+    const vraag = document.getElementById('cvVraag').value.trim();
+    const juist_antwoord = document.getElementById('cvJuistAntwoord').value;
+    if(!vraag) return;
+    const { data: bestaande } = await supabaseClient.from('toolbox_controlevragen').select('volgorde').eq('toolbox_id', actiefId).order('volgorde', { ascending:false }).limit(1);
+    const volgorde = bestaande && bestaande.length ? bestaande[0].volgorde + 1 : 1;
+    const { error } = await supabaseClient.from('toolbox_controlevragen').insert({
+      organisatie_id: huidigProfiel.organisatie_id, toolbox_id: actiefId, vraag, type: 'ja/nee', juist_antwoord, volgorde
+    });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderControlevraag(id){
+    if(!confirm('Deze controlevraag verwijderen?')) return;
+    const { error } = await supabaseClient.from('toolbox_controlevragen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  // ==================== Sessies & versturen ====================
+  let actieveSessieId = null;
+
+  async function renderSessiesLijst(){
+    const { data: sessies, error } = await supabaseClient
+      .from('toolbox_sessies').select('*, toolbox_bibliotheek(naam)').order('datum', { ascending:false }).limit(50);
+    if(error) return renderHoofdTabs() + '<div class="fout">Kon sessies niet laden: ' + error.message + '</div>';
+    const rows = (sessies||[]).map(s => `
+      <div class="card klikbaar" onclick="actieveSessieId='${s.id}'; scherm='sessieDetail'; render();">
+        <div class="row">
+          <b>${s.toolbox_bibliotheek ? s.toolbox_bibliotheek.naam : '—'}</b>
+          <span class="meta">${new Date(s.datum).toLocaleDateString('nl-NL')}</span>
+        </div>
+      </div>`).join('') || '<div class="meta">Nog geen sessies.</div>';
+    return `
+      ${renderHoofdTabs()}
+      <div class="meta" style="margin-bottom:16px">Laatste 50 toolbox-sessies. Open een sessie om controlevragen te versturen naar de deelnemers.</div>
+      ${rows}
+    `;
+  }
+
+  async function renderSessieDetail(){
+    const { data: s } = await supabaseClient.from('toolbox_sessies').select('*, toolbox_bibliotheek(naam)').eq('id', actieveSessieId).single();
+    const { data: deelnemers } = await supabaseClient.from('toolbox_deelnemers').select('*').eq('sessie_id', actieveSessieId);
+    const interneDeelnemers = (deelnemers||[]).filter(d => d.profiel_id);
+    const { data: vragen } = await supabaseClient.from('toolbox_controlevragen').select('id').eq('toolbox_id', s.toolbox_id);
+    const { data: bestaandeControles } = await supabaseClient.from('toolbox_controles').select('*').eq('sessie_id', actieveSessieId).order('aangemaakt_op', { ascending:false });
+
+    const controleRows = await Promise.all((bestaandeControles||[]).map(async (c) => {
+      const { count: totaalCount } = await supabaseClient.from('toolbox_controle_ontvangers').select('*', { count:'exact', head:true }).eq('controle_id', c.id);
+      const { count: beantwoordCount } = await supabaseClient.from('toolbox_controle_ontvangers').select('*', { count:'exact', head:true }).eq('controle_id', c.id).eq('beantwoord', true);
+      return `
+        <div class="card klikbaar" onclick="actieveControleId='${c.id}'; scherm='controleResultaten'; render();">
+          <div class="row">
+            <span>Verstuurd op ${new Date(c.aangemaakt_op).toLocaleDateString('nl-NL')}</span>
+            <span class="meta">${beantwoordCount ?? 0} / ${totaalCount ?? 0} beantwoord</span>
+          </div>
+        </div>`;
+    }));
+
+    return `
+      ${renderHoofdTabs()}
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='sessiesLijst'; render();">← Terug naar sessies</button>
+      <div class="card">
+        <b>${s.toolbox_bibliotheek ? s.toolbox_bibliotheek.naam : '—'}</b>
+        <div class="meta" style="margin-top:6px">${new Date(s.datum).toLocaleDateString('nl-NL')} · ${interneDeelnemers.length} interne deelnemers</div>
+        ${(vragen||[]).length === 0 ? `
+          <div class="meta" style="margin-top:10px">Deze toolbox heeft nog geen controlevragen — voeg die eerst toe bij de toolbox zelf in de Bibliotheek.</div>
+        ` : `
+          <button class="primary" style="margin-top:10px" onclick="verstuurControlevragen('${s.toolbox_id}', ${JSON.stringify(interneDeelnemers.map(d=>d.profiel_id))})">📨 Controlevragen versturen naar deze deelnemers</button>
+        `}
+      </div>
+      <div class="eyebrow" style="margin-top:20px">Eerder verstuurd</div>
+      ${controleRows.join('') || '<div class="meta">Nog niets verstuurd voor deze sessie.</div>'}
+    `;
+  }
+
+  async function verstuurControlevragen(toolboxId, profielIds){
+    if(!profielIds.length){ alert('Geen interne deelnemers om naar te versturen.'); return; }
+    const { data: controle, error } = await supabaseClient.from('toolbox_controles').insert({
+      organisatie_id: huidigProfiel.organisatie_id, toolbox_id: toolboxId, sessie_id: actieveSessieId, aangemaakt_door: huidigProfiel.id
+    }).select().single();
+    if(error){ alert('Versturen mislukt: ' + error.message); return; }
+    const ontvangerRijen = profielIds.map(pid => ({ organisatie_id: huidigProfiel.organisatie_id, controle_id: controle.id, profiel_id: pid }));
+    const { error: ontvangersFout } = await supabaseClient.from('toolbox_controle_ontvangers').insert(ontvangerRijen);
+    if(ontvangersFout){ alert('Ontvangers aanmaken mislukt: ' + ontvangersFout.message); return; }
+    alert('Verstuurd naar ' + profielIds.length + ' deelnemer(s).');
+    await render();
+  }
+
+  // ==================== Resultaten bekijken ====================
+  let actieveControleId = null;
+
+  async function renderControleResultaten(){
+    const { data: ontvangers } = await supabaseClient
+      .from('toolbox_controle_ontvangers').select('*').eq('controle_id', actieveControleId);
+    const profielIds = (ontvangers||[]).map(o=>o.profiel_id);
+    let profielenMap = {};
+    if(profielIds.length){
+      const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', profielIds);
+      (profielen||[]).forEach(p => { profielenMap[p.id] = p; });
+    }
+    const rows = (ontvangers||[]).map(o => {
+      const p = profielenMap[o.profiel_id];
+      return `
+        <div class="card row">
+          <span>${p ? p.voornaam + ' ' + p.achternaam : '—'}</span>
+          <span class="tag" style="${o.beantwoord ? (o.score === o.totaal ? 'background:var(--green-dim); color:var(--green);' : 'background:var(--amber-dim); color:var(--amber);') : ''}">
+            ${o.beantwoord ? o.score + '/' + o.totaal + ' goed' : 'Nog niet beantwoord'}
+          </span>
+        </div>`;
+    }).join('') || '<div class="meta">Geen ontvangers.</div>';
+
+    return `
+      ${renderHoofdTabs()}
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='sessieDetail'; render();">← Terug naar sessie</button>
+      <div class="eyebrow" style="margin-top:0">Resultaten</div>
+      ${rows}
+    `;
   }
 
   if(supabaseClient){

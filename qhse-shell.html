@@ -467,6 +467,9 @@
     const { data: toolboxBevestigingen } = await supabaseClient.from('toolbox_bevestigingen').select('id').eq('profiel_id', huidigProfielId).eq('bevestigd', false);
     aantal += (toolboxBevestigingen||[]).length;
 
+    const { data: toolboxControles } = await supabaseClient.from('toolbox_controle_ontvangers').select('id').eq('profiel_id', huidigProfielId).eq('beantwoord', false);
+    aantal += (toolboxControles||[]).length;
+
     openstaandeActiesAantal = aantal;
     heeftOpenstaandeAlert = alert;
     pasActiesBadgeToe();
