@@ -221,7 +221,10 @@
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
-        <b>${p.voornaam} ${p.achternaam}</b>
+        <label style="margin-top:0">Voornaam</label>
+        <input type="text" id="bewVoornaam" value="${p.voornaam || ''}">
+        <label>Achternaam</label>
+        <input type="text" id="bewAchternaam" value="${p.achternaam || ''}">
         <label>Personeelsnummer</label>
         <input type="text" id="bewPersoneelsnr" value="${p.personeelsnummer || ''}">
         <label>Rol</label>
@@ -271,6 +274,8 @@
   }
 
   async function opslaan(id){
+    const voornaam = document.getElementById('bewVoornaam').value.trim();
+    const achternaam = document.getElementById('bewAchternaam').value.trim();
     const personeelsnummer = document.getElementById('bewPersoneelsnr').value.trim() || null;
     const rol = document.getElementById('bewRol').value;
     const in_dienst = document.getElementById('bewInDienst').checked;
@@ -284,9 +289,14 @@
     const meldingEl = document.getElementById('bewMelding');
     foutEl.classList.add('verborgen');
     meldingEl.classList.add('verborgen');
+    if(!voornaam || !achternaam){
+      foutEl.textContent = 'Voor- en achternaam mogen niet leeg zijn.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
 
     const { error } = await supabaseClient.from('profielen')
-      .update({ personeelsnummer, rol, in_dienst, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
+      .update({ voornaam, achternaam, personeelsnummer, rol, in_dienst, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
     if(error){
       if(error.message.includes('profielen_personeelsnummer_uniek')){
         foutEl.textContent = `Personeelsnummer "${personeelsnummer}" is al in gebruik door iemand anders binnen deze organisatie. Kies een ander nummer.`;
