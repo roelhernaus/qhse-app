@@ -155,8 +155,8 @@
   <nav id="rail">
     <div class="rail-header">
       <div class="merk">
-        <div class="logo">AV</div>
-        <div class="naam">Bouwbedrijf<br>Van der Berg</div>
+        <div class="logo" id="railLogo">AV</div>
+        <div class="naam" id="railNaam">QHSE-systeem</div>
       </div>
     </div>
 
@@ -382,9 +382,22 @@
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
-    const { data: org } = await supabaseClient.from('organisaties').select('taal').eq('id', profiel.organisatie_id).single();
+    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad').eq('id', profiel.organisatie_id).single();
     huidigeTaal = (org && org.taal === 'en') ? 'en' : 'nl';
     pasVertalingenToe();
+
+    if(org){
+      const weergaveNaam = org.app_naam || org.naam || 'QHSE-systeem';
+      document.getElementById('railNaam').innerHTML = weergaveNaam.replace(/ /g, '<br>');
+      if(org.logo_pad){
+        const { data: logoData } = await supabaseClient.storage.from('organisatie-branding').createSignedUrl(org.logo_pad, 3600);
+        if(logoData){
+          document.getElementById('railLogo').innerHTML = `<img src="${logoData.signedUrl}" style="width:100%; height:100%; object-fit:cover; border-radius:8px;">`;
+        }
+      } else {
+        document.getElementById('railLogo').textContent = weergaveNaam.slice(0, 2).toUpperCase();
+      }
+    }
 
     const volledigeNaam = profiel.voornaam + ' ' + profiel.achternaam;
     document.getElementById('avatarInitialen').textContent = initialen(volledigeNaam);
