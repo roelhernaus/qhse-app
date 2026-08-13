@@ -22,6 +22,9 @@
   .whoami{ font-size:12.5px; color:var(--text-soft); }
   button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
   button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tabs{ display:flex; gap:8px; }
+  .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
   button.ghost{ background:transparent; }
   button:disabled{ opacity:.5; cursor:not-allowed; }
   input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
@@ -164,9 +167,12 @@
     else if(scherm === 'uitnodigingen') inhoud.innerHTML = await renderUitnodigingen();
   }
 
+  let personeelSortering = 'achternaam';
+
   async function renderLijst(){
+    const sorteerVeld = personeelSortering === 'nummer' ? 'personeelsnummer' : 'achternaam';
     const { data: profielen, error } = await supabaseClient
-      .from('profielen').select('*').order('achternaam');
+      .from('profielen').select('*').order(sorteerVeld, { nullsFirst: false });
     if(error) return '<div class="fout">Kon personeel niet laden: ' + error.message + '</div>';
     const rows = (profielen||[]).map(p => `
       <div class="card klikbaar" onclick="openBewerken('${p.id}')">
@@ -185,6 +191,10 @@
       <div class="row" style="margin-bottom:12px">
         <span class="meta">${(profielen||[]).length} medewerkers</span>
         <button class="ghost" onclick="scherm='uitnodigingen'; render();">Uitnodigingen</button>
+      </div>
+      <div class="tabs" style="margin-bottom:14px">
+        <div class="tab ${personeelSortering==='achternaam'?'actief':''}" onclick="personeelSortering='achternaam'; render();">Sorteer op achternaam</div>
+        <div class="tab ${personeelSortering==='nummer'?'actief':''}" onclick="personeelSortering='nummer'; render();">Sorteer op personeelsnummer</div>
       </div>
       ${rows}
     `;
