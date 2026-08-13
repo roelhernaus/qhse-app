@@ -240,12 +240,9 @@
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
-    let logoUrl = null;
-    if(huidigeOrganisatie.qr_logo_pad){
-      logoUrl = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(huidigeOrganisatie.qr_logo_pad).data.publicUrl;
-    }
-    const checkinLogoUrl = huidigeOrganisatie.qr_logo_checkin ? logoUrl : null;
-    const meldenLogoUrl = huidigeOrganisatie.qr_logo_melden ? logoUrl : null;
+    const vastLogoUrl = `${APP_URL}/favicon.png`;
+    const checkinLogoUrl = huidigeOrganisatie.qr_logo_checkin ? vastLogoUrl : null;
+    const meldenLogoUrl = huidigeOrganisatie.qr_logo_melden ? vastLogoUrl : null;
 
     let checkinsQuery = supabaseClient
       .from('checkins').select('*').eq('locatie_id', l.id).is('uitgecheckt_op', null)

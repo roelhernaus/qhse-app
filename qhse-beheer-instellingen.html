@@ -109,18 +109,8 @@
 
   <div class="eyebrow">QR-logo</div>
   <div class="card">
-    <div class="meta" style="margin-bottom:10px">Een eigen logo in het midden van de QR-codes die je print (in-/uitchecken, extern melden, keuring-stickers). Kies bij voorkeur een simpel, herkenbaar beeldmerk — een logo met veel details kan het scannen bemoeilijken.</div>
-    <div class="row">
-      <span class="meta" id="qrLogoTekst">Nog geen QR-logo geüpload</span>
-      <label class="ghost" style="display:inline-block; padding:8px 13px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
-        <span id="qrLogoKnopLabel">Uploaden</span>
-        <input type="file" accept="image/png,image/jpeg" style="display:none" onchange="uploadQrLogo(this)">
-      </label>
-    </div>
-    <img id="qrLogoPreview" style="display:none; width:64px; height:64px; margin-top:10px; border-radius:8px; border:1px solid var(--border);">
-    <div class="meta" id="qrLogoStatus" style="margin-top:6px"></div>
-
-    <label style="display:flex; align-items:center; gap:8px; margin-top:16px">
+    <div class="meta" style="margin-bottom:10px">Het AppVoorVeiligheid-logo in het midden van de QR-codes die je print (in-/uitchecken, extern melden, keuring-stickers).</div>
+    <label style="display:flex; align-items:center; gap:8px">
       <input type="checkbox" id="qrLogoCheckin" style="width:auto" onchange="opslaanQrLogoInstellingen()"> Logo tonen op check-in QR-codes
     </label>
     <label style="display:flex; align-items:center; gap:8px; margin-top:10px">
@@ -291,13 +281,6 @@
     document.getElementById('qrLogoCheckin').checked = org.qr_logo_checkin;
     document.getElementById('qrLogoMelden').checked = org.qr_logo_melden;
     document.getElementById('qrLogoKeuring').checked = org.qr_logo_keuring;
-    if(org.qr_logo_pad){
-      const { data } = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(org.qr_logo_pad);
-      document.getElementById('qrLogoTekst').textContent = '✓ Logo geüpload';
-      document.getElementById('qrLogoKnopLabel').textContent = 'Vervangen';
-      document.getElementById('qrLogoPreview').src = data.publicUrl;
-      document.getElementById('qrLogoPreview').style.display = 'block';
-    }
     document.getElementById('taalNl').classList.toggle('actief', (org.taal || 'nl') === 'nl');
     document.getElementById('taalEn').classList.toggle('actief', org.taal === 'en');
     document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
@@ -382,25 +365,6 @@
     const { error } = await supabaseClient.from('keuringscategorieen').delete().eq('id', id);
     if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
     await ververCategorieen();
-  }
-
-  async function uploadQrLogo(inputEl){
-    const file = inputEl.files[0];
-    if(!file) return;
-    const statusEl = document.getElementById('qrLogoStatus');
-    statusEl.textContent = 'Uploaden…';
-    const pad = `${huidigeOrganisatie.id}/logo-${Date.now()}.png`;
-    const { error: uploadFout } = await supabaseClient.storage.from('organisatie-qr-logos').upload(pad, file, { upsert: true });
-    if(uploadFout){ statusEl.textContent = 'Upload mislukt: ' + uploadFout.message; return; }
-    const { error: updateFout } = await supabaseClient.from('organisaties').update({ qr_logo_pad: pad }).eq('id', huidigeOrganisatie.id);
-    if(updateFout){ statusEl.textContent = 'Opslaan mislukt: ' + updateFout.message; return; }
-    huidigeOrganisatie.qr_logo_pad = pad;
-    statusEl.textContent = '✓ Geüpload.';
-    document.getElementById('qrLogoTekst').textContent = '✓ Logo geüpload';
-    document.getElementById('qrLogoKnopLabel').textContent = 'Vervangen';
-    const { data } = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(pad);
-    document.getElementById('qrLogoPreview').src = data.publicUrl + '?t=' + Date.now();
-    document.getElementById('qrLogoPreview').style.display = 'block';
   }
 
   async function opslaanQrLogoInstellingen(){

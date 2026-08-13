@@ -622,11 +622,8 @@ OPEN: Aantal treden/sporten
   async function printMiddelQr(uniekId){
     const APP_URL = "https://mijn.appvoorveiligheid.nl";
     const zoekUrl = `${APP_URL}/qhse-keuringen.html?zoek=${encodeURIComponent(uniekId)}`;
-    const { data: org } = await supabaseClient.from('organisaties').select('qr_logo_pad, qr_logo_keuring').eq('id', huidigProfiel.organisatie_id).single();
-    let logoUrl = null;
-    if(org && org.qr_logo_keuring && org.qr_logo_pad){
-      logoUrl = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(org.qr_logo_pad).data.publicUrl;
-    }
+    const { data: org } = await supabaseClient.from('organisaties').select('qr_logo_keuring').eq('id', huidigProfiel.organisatie_id).single();
+    const logoUrl = (org && org.qr_logo_keuring) ? `${APP_URL}/favicon.png` : null;
     const qrOpties = {
       width: 200, height: 200, data: zoekUrl,
       dotsOptions: { color: '#1c1d1b' },
