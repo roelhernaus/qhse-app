@@ -49,7 +49,12 @@
     <h1>Nieuw wachtwoord instellen</h1>
     <div class="card">
       <label style="margin-top:0">Nieuw wachtwoord</label>
-      <input type="password" id="nieuwWachtwoord" placeholder="Minimaal 6 tekens, met cijfer of leesteken">
+      <div style="position:relative;">
+        <input type="password" id="nieuwWachtwoord" placeholder="Minimaal 6 tekens, met cijfer of leesteken" style="padding-right:40px">
+        <button type="button" onclick="toggleWachtwoordZichtbaar(this)" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; padding:4px;">👁️</button>
+      </div>
+      <label>Herhaal nieuw wachtwoord</label>
+      <input type="password" id="nieuwWachtwoordHerhaal">
       <button onclick="stelNieuwWachtwoordIn()">Wachtwoord instellen</button>
       <div class="fout verborgen" id="nieuwFout"></div>
     </div>
@@ -81,8 +86,18 @@
     meldingEl.classList.remove('verborgen');
   }
 
+  function toggleWachtwoordZichtbaar(knop){
+    const veld1 = document.getElementById('nieuwWachtwoord');
+    const veld2 = document.getElementById('nieuwWachtwoordHerhaal');
+    const nuVerborgen = veld1.type === 'password';
+    veld1.type = nuVerborgen ? 'text' : 'password';
+    veld2.type = nuVerborgen ? 'text' : 'password';
+    knop.textContent = nuVerborgen ? '🙈' : '👁️';
+  }
+
   async function stelNieuwWachtwoordIn(){
     const nieuw = document.getElementById('nieuwWachtwoord').value;
+    const herhaal = document.getElementById('nieuwWachtwoordHerhaal').value;
     const foutEl = document.getElementById('nieuwFout');
     foutEl.classList.add('verborgen');
     if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
@@ -90,11 +105,16 @@
       foutEl.classList.remove('verborgen');
       return;
     }
+    if(nieuw !== herhaal){
+      foutEl.textContent = 'De twee wachtwoorden komen niet overeen.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
     const { error } = await supabaseClient.auth.updateUser({ password: nieuw });
     if(error){ foutEl.textContent = 'Mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(user){
-      await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+      await supabaseClient.rpc('wachtwoord_zojuist_gewijzigd');
     }
     document.getElementById('stap-nieuw-wachtwoord').classList.add('verborgen');
     document.getElementById('stap-klaar').classList.remove('verborgen');

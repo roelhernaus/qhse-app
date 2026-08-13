@@ -78,7 +78,11 @@
   <div class="card">
     <b>Nieuw wachtwoord instellen</b>
     <p class="meta" style="margin-top:8px">Om verder te gaan, moet je eerst een nieuw wachtwoord instellen.</p>
-    <input type="password" id="nieuwWachtwoordVeldExtern" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="margin-top:10px">
+    <div style="position:relative; margin-top:10px;">
+      <input type="password" id="nieuwWachtwoordVeldExtern" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="padding-right:40px">
+      <button type="button" onclick="toggleWachtwoordZichtbaarExtern(this)" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; padding:4px;">👁️</button>
+    </div>
+    <input type="password" id="nieuwWachtwoordHerhaalVeldExtern" placeholder="Herhaal nieuw wachtwoord" style="margin-top:10px">
     <button class="primary" style="margin-top:10px; width:100%" onclick="stelNieuwWachtwoordInExtern()">Wachtwoord instellen</button>
     <div class="fout verborgen" id="nieuwWachtwoordFoutExtern"></div>
     <button class="ghost" style="margin-top:10px" onclick="uitloggen()">Uitloggen</button>
@@ -125,8 +129,18 @@
       foutEl.classList.remove('verborgen');
     }
   }
+  function toggleWachtwoordZichtbaarExtern(knop){
+    const veld1 = document.getElementById('nieuwWachtwoordVeldExtern');
+    const veld2 = document.getElementById('nieuwWachtwoordHerhaalVeldExtern');
+    const nuVerborgen = veld1.type === 'password';
+    veld1.type = nuVerborgen ? 'text' : 'password';
+    veld2.type = nuVerborgen ? 'text' : 'password';
+    knop.textContent = nuVerborgen ? '🙈' : '👁️';
+  }
+
   async function stelNieuwWachtwoordInExtern(){
     const nieuw = document.getElementById('nieuwWachtwoordVeldExtern').value;
+    const herhaal = document.getElementById('nieuwWachtwoordHerhaalVeldExtern').value;
     const foutEl = document.getElementById('nieuwWachtwoordFoutExtern');
     foutEl.classList.add('verborgen');
     if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
@@ -134,10 +148,15 @@
       foutEl.classList.remove('verborgen');
       return;
     }
+    if(nieuw !== herhaal){
+      foutEl.textContent = 'De twee wachtwoorden komen niet overeen.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
     const { error: updateFout } = await supabaseClient.auth.updateUser({ password: nieuw });
     if(updateFout){ foutEl.textContent = 'Mislukt: ' + updateFout.message; foutEl.classList.remove('verborgen'); return; }
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+    const { error: rpcFout } = await supabaseClient.rpc('wachtwoord_zojuist_gewijzigd');
+    if(rpcFout){ foutEl.textContent = 'Wachtwoord gewijzigd, maar opslaan mislukt: ' + rpcFout.message; foutEl.classList.remove('verborgen'); return; }
     document.getElementById('wachtwoord-verplicht').classList.add('verborgen');
     await initApp();
   }

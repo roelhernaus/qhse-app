@@ -163,7 +163,11 @@
   <div style="max-width:360px; width:100%;">
     <h2 style="font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:10px;">Nieuw wachtwoord instellen</h2>
     <p style="font-size:13.5px; color:var(--text-secondary); line-height:1.6; margin-bottom:18px;">Om verder te gaan, moet je eerst een nieuw wachtwoord instellen.</p>
-    <input type="password" id="nieuwWachtwoordVeld" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; margin-bottom:10px;">
+    <div style="position:relative; margin-bottom:10px;">
+      <input type="password" id="nieuwWachtwoordVeld" placeholder="Nieuw wachtwoord (min. 6 tekens, met cijfer of leesteken)" style="width:100%; padding:10px 40px 10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px;">
+      <button type="button" onclick="toggleWachtwoordZichtbaar(['nieuwWachtwoordVeld','nieuwWachtwoordHerhaalVeld'], this)" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; padding:4px;">👁️</button>
+    </div>
+    <input type="password" id="nieuwWachtwoordHerhaalVeld" placeholder="Herhaal nieuw wachtwoord" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; margin-bottom:10px;">
     <button onclick="stelNieuwWachtwoordIn()" style="width:100%; padding:11px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif;">Wachtwoord instellen</button>
     <div id="nieuwWachtwoordFout" style="display:none; margin-top:10px; font-size:13px; color:#c0392b; background:#fbeae8; padding:9px 11px; border-radius:8px;"></div>
     <button onclick="uitloggen()" style="margin-top:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; cursor:pointer; font-family:'Inter',sans-serif; font-size:13px;">Uitloggen</button>
@@ -396,8 +400,15 @@
     document.getElementById('loginScherm').classList.remove('verborgen');
   }
 
+  function toggleWachtwoordZichtbaar(veldIds, knop){
+    const nuVerborgen = document.getElementById(veldIds[0]).type === 'password';
+    veldIds.forEach(id => { document.getElementById(id).type = nuVerborgen ? 'text' : 'password'; });
+    knop.textContent = nuVerborgen ? '🙈' : '👁️';
+  }
+
   async function stelNieuwWachtwoordIn(){
     const nieuw = document.getElementById('nieuwWachtwoordVeld').value;
+    const herhaal = document.getElementById('nieuwWachtwoordHerhaalVeld').value;
     const foutEl = document.getElementById('nieuwWachtwoordFout');
     foutEl.style.display = 'none';
     if(!nieuw || nieuw.length < 6 || !/[0-9\W]/.test(nieuw)){
@@ -405,10 +416,15 @@
       foutEl.style.display = 'block';
       return;
     }
+    if(nieuw !== herhaal){
+      foutEl.textContent = 'De twee wachtwoorden komen niet overeen.';
+      foutEl.style.display = 'block';
+      return;
+    }
     const { error: updateFout } = await supabaseClient.auth.updateUser({ password: nieuw });
     if(updateFout){ foutEl.textContent = 'Mislukt: ' + updateFout.message; foutEl.style.display = 'block'; return; }
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    await supabaseClient.from('profielen').update({ moet_wachtwoord_wijzigen: false, wachtwoord_laatst_gewijzigd: new Date().toISOString() }).eq('id', user.id);
+    const { error: rpcFout } = await supabaseClient.rpc('wachtwoord_zojuist_gewijzigd');
+    if(rpcFout){ foutEl.textContent = 'Wachtwoord gewijzigd, maar opslaan mislukt: ' + rpcFout.message; foutEl.style.display = 'block'; return; }
     document.getElementById('wachtwoordVerplichtScherm').style.display = 'none';
     await initShell();
   }
