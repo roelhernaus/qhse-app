@@ -10,11 +10,12 @@
 <style>
   :root{
     --bg:#f4f5f3; --bg-card:#ffffff; --border:#e2e3df; --text-primary:#1c1d1b; --text-secondary:#5a5c57; --text-tertiary:#9a9c96;
-    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10);
+    --accent:#2f6f5e; --accent-dim: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   body.donker{
     --bg:#15181a; --bg-card:#1e2225; --border:#2c3134; --text-primary:#f2f3f1; --text-secondary:#a8ada9; --text-tertiary:#6d726e;
-    --accent:#4a9c85; --accent-dim:rgba(74,156,133,0.15);
+    --accent: color-mix(in srgb, var(--accent) 65%, white 35%);
+    --accent-dim: color-mix(in srgb, var(--accent) 15%, transparent);
   }
   body{ transition: background .15s ease, color .15s ease; }
   *{ box-sizing:border-box; margin:0; padding:0; }

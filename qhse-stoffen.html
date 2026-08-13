@@ -10,7 +10,7 @@
 <style>
   :root{
     --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
-    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --accent:#2f6f5e; --accent-dim: color-mix(in srgb, var(--accent) 10%, transparent); --amber:#b57a10; --amber-dim:#f6e3bd;
     --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
   }
   *{ box-sizing:border-box; }
@@ -132,6 +132,8 @@
       .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
+    supabaseClient.from('organisaties').select('accentkleur').eq('id', profiel.organisatie_id).single()
+      .then(({ data: kleurOrg }) => { if(kleurOrg && kleurOrg.accentkleur){ document.documentElement.style.setProperty('--accent', kleurOrg.accentkleur); } });
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('login-scherm').classList.add('verborgen');
     document.getElementById('app-scherm').classList.remove('verborgen');

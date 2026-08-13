@@ -10,7 +10,7 @@
 <style>
   :root{
     --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
-    --accent:#2f6f5e; --accent-dim:rgba(47,111,94,0.10); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --accent:#2f6f5e; --accent-dim: color-mix(in srgb, var(--accent) 10%, transparent); --amber:#b57a10; --amber-dim:#f6e3bd;
     --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
   }
   *{ box-sizing:border-box; }
@@ -90,6 +90,9 @@
     <input type="text" id="bedrijfsnaam">
     <label>Naam van de app</label>
     <input type="text" id="appNaam" placeholder="Bijv. 'AppVoorVeiligheid' of een eigen naam">
+    <label>Accentkleur</label>
+    <input type="color" id="accentkleurVeld" style="width:80px; height:40px; padding:3px; cursor:pointer;">
+    <div class="meta" style="margin-top:4px">De hoofdkleur van knoppen en actieve elementen door de hele app heen.</div>
     <label>Logo</label>
     <div class="row">
       <img id="logoPreview" src="" style="display:none">
@@ -270,6 +273,8 @@
       .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
+    supabaseClient.from('organisaties').select('accentkleur').eq('id', profiel.organisatie_id).single()
+      .then(({ data: kleurOrg }) => { if(kleurOrg && kleurOrg.accentkleur){ document.documentElement.style.setProperty('--accent', kleurOrg.accentkleur); } });
     document.getElementById('login-scherm').classList.add('verborgen');
 
     if(profiel.rol !== 'admin'){
@@ -287,6 +292,7 @@
     isPlatformBeheerder = !!pbCheck;
     document.getElementById('bedrijfsnaam').value = org.naam || '';
     document.getElementById('appNaam').value = org.app_naam || '';
+    document.getElementById('accentkleurVeld').value = org.accentkleur || '#2f6f5e';
     document.getElementById('qrLogoCheckin').checked = org.qr_logo_checkin;
     document.getElementById('qrLogoMelden').checked = org.qr_logo_melden;
     document.getElementById('qrLogoKeuring').checked = org.qr_logo_keuring;
@@ -427,14 +433,16 @@
   async function opslaanHuisstijl(){
     const naam = document.getElementById('bedrijfsnaam').value.trim();
     const app_naam = document.getElementById('appNaam').value.trim() || null;
+    const accentkleur = document.getElementById('accentkleurVeld').value;
     const foutEl = document.getElementById('huisstijlFout');
     const meldingEl = document.getElementById('huisstijlMelding');
     foutEl.classList.add('verborgen'); meldingEl.classList.add('verborgen');
     if(!naam){ foutEl.textContent = 'Bedrijfsnaam mag niet leeg zijn.'; foutEl.classList.remove('verborgen'); return; }
 
-    const { error } = await supabaseClient.from('organisaties').update({ naam, app_naam }).eq('id', huidigeOrganisatie.id);
+    const { error } = await supabaseClient.from('organisaties').update({ naam, app_naam, accentkleur }).eq('id', huidigeOrganisatie.id);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
-    meldingEl.textContent = '✓ Opgeslagen.'; meldingEl.classList.remove('verborgen');
+    document.documentElement.style.setProperty('--accent', accentkleur);
+    meldingEl.textContent = '✓ Opgeslagen. Herlaad de pagina om de kleur overal door te laten werken.'; meldingEl.classList.remove('verborgen');
   }
 
   async function opslaanStreefaantallen(){
