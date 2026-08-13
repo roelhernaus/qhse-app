@@ -288,7 +288,11 @@
     const { error } = await supabaseClient.from('profielen')
       .update({ personeelsnummer, rol, in_dienst, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
     if(error){
-      foutEl.textContent = 'Opslaan mislukt: ' + error.message;
+      if(error.message.includes('profielen_personeelsnummer_uniek')){
+        foutEl.textContent = `Personeelsnummer "${personeelsnummer}" is al in gebruik door iemand anders binnen deze organisatie. Kies een ander nummer.`;
+      } else {
+        foutEl.textContent = 'Opslaan mislukt: ' + error.message;
+      }
       foutEl.classList.remove('verborgen');
       return;
     }
