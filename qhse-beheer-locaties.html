@@ -240,6 +240,12 @@
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
+    let logoUrl = null;
+    if(huidigeOrganisatie.qr_logo_pad){
+      logoUrl = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(huidigeOrganisatie.qr_logo_pad).data.publicUrl;
+    }
+    const checkinLogoUrl = huidigeOrganisatie.qr_logo_checkin ? logoUrl : null;
+    const meldenLogoUrl = huidigeOrganisatie.qr_logo_melden ? logoUrl : null;
 
     let checkinsQuery = supabaseClient
       .from('checkins').select('*').eq('locatie_id', l.id).is('uitgecheckt_op', null)
@@ -273,17 +279,27 @@
         <b>${l.naam}</b>
         <div class="row" style="margin-top:10px">
           <button class="ghost" onclick="verwijderLocatie()">Verwijderen</button>
-          <button class="ghost" onclick="printQr('${checkinUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}')">🖨️ Print check-in QR (A4)</button>
+          <button class="ghost" onclick="printQr('${checkinUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}', ${checkinLogoUrl ? "'" + checkinLogoUrl.replace(/'/g,"\\'") + "'" : 'null'})">🖨️ Print check-in QR (A4)</button>
         </div>
-        <button class="ghost" style="width:100%; margin-top:8px" onclick="printMeldenQr('${meldenUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}')">🖨️ Print meldingen-QR (A4) — voor externen, geen account nodig</button>
+        <button class="ghost" style="width:100%; margin-top:8px" onclick="printMeldenQr('${meldenUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}', ${meldenLogoUrl ? "'" + meldenLogoUrl.replace(/'/g,"\\'") + "'" : 'null'})">🖨️ Print meldingen-QR (A4) — voor externen, geen account nodig</button>
       </div>
       <div class="eyebrow" style="margin-top:20px">Nu ingecheckt (${(checkins||[]).length})</div>
       ${rows}
     `;
   }
 
-  function printQr(url, naam){
+  function printQr(url, naam, logoUrl){
     const venster = window.open('', '_blank');
+    const qrOpties = {
+      width: 320, height: 320, data: url,
+      dotsOptions: { color: '#1c1d1b', type: 'rounded' },
+      cornersSquareOptions: { type: 'extra-rounded' },
+      qrOptions: { errorCorrectionLevel: 'H' }
+    };
+    if(logoUrl){
+      qrOpties.image = logoUrl;
+      qrOpties.imageOptions = { crossOrigin: 'anonymous', margin: 8, imageSize: 0.22 };
+    }
     venster.document.write(`
       <html><head><title>Check-in QR — ${naam}</title>
       <style>
@@ -299,14 +315,7 @@
         <p>Scan met de camera van je telefoon</p>
         <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.9.2/lib/qr-code-styling.js"><\/script>
         <script>
-          new QRCodeStyling({
-            width: 320, height: 320, data: ${JSON.stringify(url)},
-            image: ${JSON.stringify(APP_URL + '/favicon.png')},
-            dotsOptions: { color: '#1c1d1b', type: 'rounded' },
-            cornersSquareOptions: { type: 'extra-rounded' },
-            imageOptions: { crossOrigin: 'anonymous', margin: 8, imageSize: 0.22 },
-            qrOptions: { errorCorrectionLevel: 'H' }
-          }).append(document.getElementById('qr'));
+          new QRCodeStyling(${JSON.stringify(qrOpties)}).append(document.getElementById('qr'));
           setTimeout(() => window.print(), 400);
         <\/script>
       </body></html>
@@ -314,8 +323,18 @@
     venster.document.close();
   }
 
-  function printMeldenQr(url, naam){
+  function printMeldenQr(url, naam, logoUrl){
     const venster = window.open('', '_blank');
+    const qrOpties = {
+      width: 320, height: 320, data: url,
+      dotsOptions: { color: '#1c1d1b', type: 'rounded' },
+      cornersSquareOptions: { type: 'extra-rounded' },
+      qrOptions: { errorCorrectionLevel: 'H' }
+    };
+    if(logoUrl){
+      qrOpties.image = logoUrl;
+      qrOpties.imageOptions = { crossOrigin: 'anonymous', margin: 8, imageSize: 0.22 };
+    }
     venster.document.write(`
       <html><head><title>Melden QR — ${naam}</title>
       <style>
@@ -331,14 +350,7 @@
         <p>Scan met de camera van je telefoon — geen account nodig, meteen een melding maken</p>
         <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.9.2/lib/qr-code-styling.js"><\/script>
         <script>
-          new QRCodeStyling({
-            width: 320, height: 320, data: ${JSON.stringify(url)},
-            image: ${JSON.stringify(APP_URL + '/favicon.png')},
-            dotsOptions: { color: '#1c1d1b', type: 'rounded' },
-            cornersSquareOptions: { type: 'extra-rounded' },
-            imageOptions: { crossOrigin: 'anonymous', margin: 8, imageSize: 0.22 },
-            qrOptions: { errorCorrectionLevel: 'H' }
-          }).append(document.getElementById('qr'));
+          new QRCodeStyling(${JSON.stringify(qrOpties)}).append(document.getElementById('qr'));
           setTimeout(() => window.print(), 400);
         <\/script>
       </body></html>

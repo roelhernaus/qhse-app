@@ -619,9 +619,23 @@ OPEN: Aantal treden/sporten
     actiefId = null; scherm = 'lijst'; await render();
   }
 
-  function printMiddelQr(uniekId){
+  async function printMiddelQr(uniekId){
     const APP_URL = "https://mijn.appvoorveiligheid.nl";
     const zoekUrl = `${APP_URL}/qhse-keuringen.html?zoek=${encodeURIComponent(uniekId)}`;
+    const { data: org } = await supabaseClient.from('organisaties').select('qr_logo_pad, qr_logo_keuring').eq('id', huidigProfiel.organisatie_id).single();
+    let logoUrl = null;
+    if(org && org.qr_logo_keuring && org.qr_logo_pad){
+      logoUrl = supabaseClient.storage.from('organisatie-qr-logos').getPublicUrl(org.qr_logo_pad).data.publicUrl;
+    }
+    const qrOpties = {
+      width: 200, height: 200, data: zoekUrl,
+      dotsOptions: { color: '#1c1d1b' },
+      qrOptions: { errorCorrectionLevel: 'H' }
+    };
+    if(logoUrl){
+      qrOpties.image = logoUrl;
+      qrOpties.imageOptions = { crossOrigin: 'anonymous', margin: 4, imageSize: 0.16 };
+    }
     const venster = window.open('', '_blank');
     venster.document.write(`
       <html><head><title>Keuring QR — ${uniekId}</title>
@@ -635,13 +649,7 @@ OPEN: Aantal treden/sporten
         <h2>${uniekId}</h2>
         <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.9.2/lib/qr-code-styling.js"><\/script>
         <script>
-          new QRCodeStyling({
-            width: 200, height: 200, data: ${JSON.stringify(zoekUrl)},
-            image: ${JSON.stringify(APP_URL + '/favicon.png')},
-            dotsOptions: { color: '#1c1d1b' },
-            imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: 0.16 },
-            qrOptions: { errorCorrectionLevel: 'H' }
-          }).append(document.getElementById('qr'));
+          new QRCodeStyling(${JSON.stringify(qrOpties)}).append(document.getElementById('qr'));
           setTimeout(() => window.print(), 400);
         <\/script>
       </body></html>
