@@ -398,10 +398,13 @@
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
-    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules').eq('id', profiel.organisatie_id).single();
+    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules, accentkleur').eq('id', profiel.organisatie_id).single();
     uitgeschakeldeModules = (org && org.uitgeschakelde_modules) || [];
     huidigeTaal = (org && org.taal === 'en') ? 'en' : 'nl';
     pasVertalingenToe();
+    if(org && org.accentkleur){
+      document.documentElement.style.setProperty('--accent', org.accentkleur);
+    }
 
     if(org){
       const weergaveNaam = org.app_naam || org.naam || 'QHSE-systeem';
