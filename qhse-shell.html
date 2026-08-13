@@ -102,6 +102,12 @@
   }
   .tegel .tegel-icon svg{ width:28px; height:28px; }
   .tegel .tegel-naam{ font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; }
+  .tegel-status{ font-size:11px; font-weight:600; margin-top:6px; }
+  .tegel-status.zichtbaar{ color:var(--accent); }
+  .tegel-status.verborgen-status{ color:#b57a10; }
+  .module-status{ margin-left:auto; font-size:10px; opacity:.7; }
+  .module-status.zichtbaar{ color:#7fd9b8; }
+  .module-status.verborgen-status{ color:#e8c072; }
   .theme-toggle{
     width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--bg-card);
     display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; margin-right:8px;
@@ -226,26 +232,26 @@
 
   const MODULES_FRONTEND = [
     { naam:'Mijn Acties', naam_en:'My Actions', pagina:'qhse-acties.html', icon:'acties' },
-    { naam:'Meldingen', naam_en:'Reports', pagina:'qhse-meldingen.html', icon:'meldingen' },
-    { naam:'WPI', naam_en:'WPI', pagina:'qhse-wpi.html', icon:'wpi' },
-    { naam:'MBB', naam_en:'MBB', pagina:'qhse-mbb.html', icon:'mbb' },
-    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-toolboxen.html', icon:'toolboxen' },
-    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-opleidingen.html', icon:'opleidingen' },
-    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-stoffen.html', icon:'stoffen' },
-    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-keuringen.html', icon:'keuringen' },
-    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-logboeken.html', icon:'logboeken' },
+    { naam:'Meldingen', naam_en:'Reports', pagina:'qhse-meldingen.html', icon:'meldingen', moduleKey:'meldingen' },
+    { naam:'WPI', naam_en:'WPI', pagina:'qhse-wpi.html', icon:'wpi', moduleKey:'wpi_mbb' },
+    { naam:'MBB', naam_en:'MBB', pagina:'qhse-mbb.html', icon:'mbb', moduleKey:'wpi_mbb' },
+    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-toolboxen.html', icon:'toolboxen', moduleKey:'toolboxen' },
+    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-opleidingen.html', icon:'opleidingen', moduleKey:'opleidingen' },
+    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-stoffen.html', icon:'stoffen', moduleKey:'stoffen' },
+    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-keuringen.html', icon:'keuringen', moduleKey:'keuringen' },
+    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-logboeken.html', icon:'logboeken', moduleKey:'logboeken' },
   ];
   const MODULES_BACKEND = [
     { naam:'Compliance', naam_en:'Compliance', pagina:'qhse-beheer-compliance.html', icon:'compliance', rollen:['admin','kam'] },
     { naam:'Personeel', naam_en:'Personnel', pagina:'qhse-beheer-personeel.html', icon:'personeel', rollen:['admin','hr','kam'] },
     { naam:'Groepen', naam_en:'Groups', pagina:'qhse-beheer-groepen.html', icon:'groepen', rollen:['admin','hr'] },
     { naam:'Locaties', naam_en:'Locations', pagina:'qhse-beheer-locaties.html', icon:'locaties', rollen:['admin','kam'] },
-    { naam:'WPI & MBB', naam_en:'WPI & MBB', pagina:'qhse-beheer-wpi.html', icon:'wpibeheer', rollen:['admin','kam'] },
-    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen', rollen:['admin','kam'] },
-    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen', rollen:['admin','kam'] },
-    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-beheer-stoffen.html', icon:'stoffen', rollen:['admin','kam'] },
-    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-beheer-keuringen.html', icon:'keuringen', rollen:['admin','kam','keurmeester'] },
-    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-beheer-logboeken.html', icon:'logboeken', rollen:['admin','kam'] },
+    { naam:'WPI & MBB', naam_en:'WPI & MBB', pagina:'qhse-beheer-wpi.html', icon:'wpibeheer', rollen:['admin','kam'], moduleKey:'wpi_mbb' },
+    { naam:'Toolboxen', naam_en:'Toolbox talks', pagina:'qhse-beheer-toolboxen.html', icon:'toolboxen', rollen:['admin','kam'], moduleKey:'toolboxen' },
+    { naam:'Opleidingen', naam_en:'Training', pagina:'qhse-beheer-opleidingen.html', icon:'opleidingen', rollen:['admin','kam'], moduleKey:'opleidingen' },
+    { naam:'Stoffen', naam_en:'Substances', pagina:'qhse-beheer-stoffen.html', icon:'stoffen', rollen:['admin','kam'], moduleKey:'stoffen' },
+    { naam:'Keuringen', naam_en:'Inspections', pagina:'qhse-beheer-keuringen.html', icon:'keuringen', rollen:['admin','kam','keurmeester'], moduleKey:'keuringen' },
+    { naam:'Logboeken', naam_en:'Logbooks', pagina:'qhse-beheer-logboeken.html', icon:'logboeken', rollen:['admin','kam'], moduleKey:'logboeken' },
     { naam:'Instellingen', naam_en:'Settings', pagina:'qhse-beheer-instellingen.html', icon:'instellingen', rollen:['admin'] },
     { naam:'Audittrail', naam_en:'Audit trail', pagina:'qhse-beheer-auditlog.html', icon:'auditlog', rollen:['admin','kam'] },
   ];
@@ -253,6 +259,7 @@
   let huidigProfielRol = null;
 
   let huidigeTaal = 'nl';
+  let uitgeschakeldeModules = [];
 
   const VERTALINGEN = {
     nl: {
@@ -261,7 +268,8 @@
       nogGeenAccount: 'Nog geen account? Account aanmaken', uitloggen: 'Uitloggen',
       medewerkersApp: 'Medewerkers-app', beheerdersdashboard: 'Beheerdersdashboard',
       inloggenMislukt: 'Inloggen mislukt: ', onverwachteFout: 'Onverwachte fout: ',
-      supabaseNietGeladen: 'Supabase niet geladen.'
+      supabaseNietGeladen: 'Supabase niet geladen.',
+      zichtbaarVoorMedewerkers: 'Zichtbaar voor medewerkers', nietZichtbaarVoorMedewerkers: 'Niet zichtbaar voor medewerkers'
     },
     en: {
       voorJou: 'For you', beheer: 'Admin', dashboard: 'Dashboard', overzicht: 'Overview',
@@ -269,7 +277,8 @@
       nogGeenAccount: "Don't have an account? Create one", uitloggen: 'Log out',
       medewerkersApp: 'Employee app', beheerdersdashboard: 'Admin dashboard',
       inloggenMislukt: 'Login failed: ', onverwachteFout: 'Unexpected error: ',
-      supabaseNietGeladen: 'Supabase failed to load.'
+      supabaseNietGeladen: 'Supabase failed to load.',
+      zichtbaarVoorMedewerkers: 'Visible to employees', nietZichtbaarVoorMedewerkers: 'Not visible to employees'
     }
   };
 
@@ -295,21 +304,27 @@
     return huidigeTaal === 'en' ? (m.naam_en || m.naam) : m.naam;
   }
 
-  function bouwRail(){
-    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
-    document.getElementById('railItemsFrontend').innerHTML = `<div class="rail-groep">${t('voorJou')}</div>` +
-      MODULES_FRONTEND.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}</div>`).join('');
-    document.getElementById('railItemsBackend').innerHTML = `<div class="rail-groep">${t('beheer')}</div>` +
-      toegestaneBackend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}</div>`).join('');
+  function isModuleZichtbaar(m){
+    return !m.moduleKey || !uitgeschakeldeModules.includes(m.moduleKey);
   }
 
-  function bouwTegels(lijst){
+  function bouwRail(){
+    const toegestaneBackend = MODULES_BACKEND.filter(m => m.rollen.includes(huidigProfielRol));
+    const zichtbareFrontend = MODULES_FRONTEND.filter(isModuleZichtbaar);
+    document.getElementById('railItemsFrontend').innerHTML = `<div class="rail-groep">${t('voorJou')}</div>` +
+      zichtbareFrontend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}</div>`).join('');
+    document.getElementById('railItemsBackend').innerHTML = `<div class="rail-groep">${t('beheer')}</div>` +
+      toegestaneBackend.map(m => `<div class="rail-item" data-pagina="${m.pagina}" onclick="ga(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>${moduleNaam(m)}${m.moduleKey ? `<span class="module-status ${isModuleZichtbaar(m)?'zichtbaar':'verborgen-status'}">${isModuleZichtbaar(m) ? '●' : '○'}</span>` : ''}</div>`).join('');
+  }
+
+  function bouwTegels(lijst, isBeheer){
     document.getElementById('tegelGrid').innerHTML = lijst.map((m,i) => `
       <div class="tegel" onclick="openVanuitTegel('${m.pagina}')">
         <div class="tegel-icon" style="background:${KLEUREN[i % KLEUREN.length]}22; color:${KLEUREN[i % KLEUREN.length]}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${ICONEN[m.icon]}</svg>
         </div>
         <div class="tegel-naam">${moduleNaam(m)}</div>
+        ${isBeheer && m.moduleKey ? `<div class="tegel-status ${isModuleZichtbaar(m)?'zichtbaar':'verborgen-status'}">${isModuleZichtbaar(m) ? t('zichtbaarVoorMedewerkers') : t('nietZichtbaarVoorMedewerkers')}</div>` : ''}
       </div>
     `).join('');
   }
@@ -382,7 +397,8 @@
     huidigProfielId = profiel.id;
     huidigProfielRol = profiel.rol;
 
-    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad').eq('id', profiel.organisatie_id).single();
+    const { data: org } = await supabaseClient.from('organisaties').select('taal, naam, app_naam, logo_pad, uitgeschakelde_modules').eq('id', profiel.organisatie_id).single();
+    uitgeschakeldeModules = (org && org.uitgeschakelde_modules) || [];
     huidigeTaal = (org && org.taal === 'en') ? 'en' : 'nl';
     pasVertalingenToe();
 
@@ -520,7 +536,7 @@
     document.getElementById('btnBackend').classList.toggle('actief', omgeving==='backend');
     document.getElementById('railItemsFrontend').classList.toggle('verborgen', omgeving!=='frontend');
     document.getElementById('railItemsBackend').classList.toggle('verborgen', omgeving!=='backend');
-    bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND : toegestaneBackend);
+    bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND.filter(isModuleZichtbaar) : toegestaneBackend, omgeving==='backend');
     toonDashboard();
     pasActiesBadgeToe();
   }

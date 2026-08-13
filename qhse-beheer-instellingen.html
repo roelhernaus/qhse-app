@@ -122,6 +122,12 @@
     <div class="meta" style="margin-top:6px">Keuring-stickers zijn klein — een logo daarop staat standaard uit, omdat dat op een goedkope labelprinter het scannen kan bemoeilijken.</div>
   </div>
 
+  <div class="eyebrow">Modules</div>
+  <div class="card">
+    <div class="meta" style="margin-bottom:10px">Bepaalt welke modules medewerkers als tegel te zien krijgen. In het Beheerdersdashboard blijft alles altijd zichtbaar voor jou, ongeacht deze instelling — zo kun je een module gerust alvast inrichten voordat je 'm openzet.</div>
+    <div id="moduleVinkjes"></div>
+  </div>
+
   <div class="eyebrow">Voertaal</div>
   <div class="card">
     <div class="meta" style="margin-bottom:10px">Bepaalt de taal van het systeem voor iedereen binnen jouw organisatie. Wat mensen zelf invullen (meldingen, documenten) verandert hierdoor niet — alleen de knoppen, labels en teksten van de app zelf.</div>
@@ -284,6 +290,7 @@
     document.getElementById('qrLogoCheckin').checked = org.qr_logo_checkin;
     document.getElementById('qrLogoMelden').checked = org.qr_logo_melden;
     document.getElementById('qrLogoKeuring').checked = org.qr_logo_keuring;
+    renderModuleVinkjes(org.uitgeschakelde_modules || []);
     document.getElementById('taalNl').classList.toggle('actief', (org.taal || 'nl') === 'nl');
     document.getElementById('taalEn').classList.toggle('actief', org.taal === 'en');
     document.getElementById('streefWpi').value = org.wpi_streefaantal_per_jaar ?? 12;
@@ -377,6 +384,31 @@
     const qr_logo_melden = document.getElementById('qrLogoMelden').checked;
     const qr_logo_keuring = document.getElementById('qrLogoKeuring').checked;
     await supabaseClient.from('organisaties').update({ qr_logo_checkin, qr_logo_melden, qr_logo_keuring }).eq('id', huidigeOrganisatie.id);
+  }
+
+  const TOGGLEBARE_MODULES = [
+    { key:'meldingen', naam:'Meldingen' },
+    { key:'wpi_mbb', naam:'WPI & MBB' },
+    { key:'toolboxen', naam:'Toolboxen' },
+    { key:'opleidingen', naam:'Opleidingen' },
+    { key:'stoffen', naam:'Gevaarlijke stoffen' },
+    { key:'keuringen', naam:'Keuringen' },
+    { key:'logboeken', naam:'Logboeken' },
+  ];
+
+  function renderModuleVinkjes(uitgeschakeld){
+    document.getElementById('moduleVinkjes').innerHTML = TOGGLEBARE_MODULES.map((m,i) => `
+      <label style="display:flex; align-items:center; gap:8px; ${i>0?'margin-top:10px':''}">
+        <input type="checkbox" id="mod-${m.key}" style="width:auto" ${!uitgeschakeld.includes(m.key)?'checked':''} onchange="opslaanModuleVinkjes()"> ${m.naam}
+      </label>
+    `).join('');
+  }
+
+  async function opslaanModuleVinkjes(){
+    const uitgeschakelde_modules = TOGGLEBARE_MODULES.filter(m => !document.getElementById('mod-'+m.key).checked).map(m=>m.key);
+    const { error } = await supabaseClient.from('organisaties').update({ uitgeschakelde_modules }).eq('id', huidigeOrganisatie.id);
+    if(error){ alert('Opslaan mislukt: ' + error.message); return; }
+    huidigeOrganisatie.uitgeschakelde_modules = uitgeschakelde_modules;
   }
 
   async function kiesTaal(taal){
