@@ -620,9 +620,8 @@ OPEN: Aantal treden/sporten
   }
 
   function printMiddelQr(uniekId){
-    const APP_URL = "https://roelhernaus.github.io/qhse-app";
+    const APP_URL = "https://mijn.appvoorveiligheid.nl";
     const zoekUrl = `${APP_URL}/qhse-keuringen.html?zoek=${encodeURIComponent(uniekId)}`;
-    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(zoekUrl)}`;
     const venster = window.open('', '_blank');
     venster.document.write(`
       <html><head><title>Keuring QR — ${uniekId}</title>
@@ -630,11 +629,21 @@ OPEN: Aantal treden/sporten
         @page{ margin:2mm; }
         body{ font-family: Arial, sans-serif; margin:0; padding:6px; text-align:center; width:fit-content; }
         h2{ font-size:13px; margin:0 0 4px; font-family:monospace; letter-spacing:.02em; }
-        img{ width:90px; height:90px; display:block; margin:0 auto; }
+        #qr{ width:90px; height:90px; margin:0 auto; }
       </style></head><body>
-        <img src="${qrImg}">
+        <div id="qr"></div>
         <h2>${uniekId}</h2>
-        <script>window.print();<\/script>
+        <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.9.2/lib/qr-code-styling.js"><\/script>
+        <script>
+          new QRCodeStyling({
+            width: 200, height: 200, data: ${JSON.stringify(zoekUrl)},
+            image: ${JSON.stringify(APP_URL + '/favicon.png')},
+            dotsOptions: { color: '#1c1d1b' },
+            imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: 0.16 },
+            qrOptions: { errorCorrectionLevel: 'H' }
+          }).append(document.getElementById('qr'));
+          setTimeout(() => window.print(), 400);
+        <\/script>
       </body></html>
     `);
     venster.document.close();
