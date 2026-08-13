@@ -172,7 +172,9 @@
           <button class="ghost" style="margin-top:10px" onclick="wisselActief('${org.id}', ${isActief})">${isActief ? 'Op inactief zetten' : 'Weer activeren'}</button>
           <button class="ghost" style="margin-top:6px" onclick="maakAudittrailLeeg('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Audittrail leegmaken</button>
           <button class="ghost" style="margin-top:6px" onclick="verwijderAfgehandeldeMeldingen('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Afgehandelde meldingen + chats wissen</button>
-          <button class="ghost" style="margin-top:6px" onclick="verwijderWpiFormulieren('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">WPI/MBB-formulieren wissen</button>
+          <button class="ghost" style="margin-top:6px" onclick="verwijderWpiFormulieren('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">WPI/MBB-formulieren + bezoeken wissen</button>
+          <button class="ghost" style="margin-top:6px" onclick="verwijderToolboxSessies('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Toolbox-sessies wissen</button>
+          <button class="ghost" style="margin-top:6px" onclick="verwijderLogboekEntries('${org.id}', '${org.naam.replace(/'/g,"\\'")}')">Logboek-entries wissen</button>
           <button class="ghost" style="margin-top:6px" onclick="toonPiekPerMaand('${org.id}', this)">📊 Facturering per maand</button>
           <div class="piek-tabel" style="margin-top:8px; display:none;"></div>
         </div>`;
@@ -212,10 +214,29 @@
   }
 
   async function verwijderWpiFormulieren(orgId, orgNaam){
-    if(!confirm(`ALLE WPI- en MBB-formulieren van "${orgNaam}" verwijderen (inclusief hun vragen)? Eerder ingevulde bezoeken blijven bewaard, maar verliezen de koppeling naar het formulier. Dit is onomkeerbaar.`)) return;
+    if(!confirm(`ALLE WPI- en MBB-formulieren van "${orgNaam}" verwijderen, inclusief hun vragen én alle bezoeken (ingevulde inspecties)? Dit is onomkeerbaar en bedoeld om een testomgeving helemaal schoon te maken.`)) return;
+    const { error: bezoekenFout } = await supabaseClient.from('wpi_bezoeken').delete().eq('organisatie_id', orgId);
+    if(bezoekenFout){ alert('Mislukt bij bezoeken: ' + bezoekenFout.message); return; }
     const { error } = await supabaseClient.from('wpi_formulieren').delete().eq('organisatie_id', orgId);
+    if(error){ alert('Mislukt bij formulieren: ' + error.message); return; }
+    alert('WPI/MBB-formulieren en bezoeken verwijderd.');
+  }
+
+  async function verwijderToolboxSessies(orgId, orgNaam){
+    if(!confirm(`ALLE toolbox-sessies van "${orgNaam}" verwijderen (inclusief aanwezigheid, bevestigingen en controlevragen-resultaten)? De toolbox-bibliotheek zelf blijft bestaan. Dit is onomkeerbaar.`)) return;
+    const { error } = await supabaseClient.from('toolbox_sessies').delete().eq('organisatie_id', orgId);
     if(error){ alert('Mislukt: ' + error.message); return; }
-    alert('WPI/MBB-formulieren verwijderd.');
+    alert('Toolbox-sessies verwijderd.');
+  }
+
+  async function verwijderLogboekEntries(orgId, orgNaam){
+    if(!confirm(`ALLE logboek-entries (notules/shiftregels + hun acties) van "${orgNaam}" verwijderen? De logboek-structuur zelf blijft bestaan. Dit is onomkeerbaar.`)) return;
+    const { data: logboeken } = await supabaseClient.from('logboeken').select('id').eq('organisatie_id', orgId);
+    const logboekIds = (logboeken||[]).map(l => l.id);
+    if(!logboekIds.length){ alert('Geen logboeken gevonden.'); return; }
+    const { error } = await supabaseClient.from('logboek_regels').delete().in('logboek_id', logboekIds);
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    alert('Logboek-entries verwijderd.');
   }
 
   async function toonPiekPerMaand(orgId, knop){
