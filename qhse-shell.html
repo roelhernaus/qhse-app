@@ -523,6 +523,11 @@
 
     kiesOmgeving('frontend');
     berekenOpenstaandeActies();
+
+    // Elke minuut het belletje/uitroepteken op de achtergrond verversen —
+    // raakt alleen de badge, nooit de rest van de pagina (dus ook geen
+    // verstoring van eventuele nog niet opgeslagen invulvelden).
+    setInterval(berekenOpenstaandeActies, 60000);
   }
 
   async function ledenVanGroepShell(groepId){
