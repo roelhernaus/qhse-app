@@ -247,6 +247,7 @@
 
     const { data: historie } = await supabaseClient.from('melding_classificatie_historie').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('gewijzigd_op', { ascending:false });
     const { data: opvolgingEntries } = await supabaseClient.from('melding_opvolging_entries').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('aangemaakt_op', { ascending:false });
+    const { data: documenten } = await supabaseClient.from('melding_incidentonderzoek_documenten').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('geupload_op', { ascending:false });
 
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
@@ -294,10 +295,6 @@
           <input type="text" id="nlaNummer" value="${m.nla_registratienummer||''}">
         ` : ''}
 
-        <label>Incidentonderzoek (document)</label>
-        ${m.incidentonderzoek_pad ? `<button class="ghost" onclick="bekijkOnderzoek('${m.incidentonderzoek_pad}')">📄 Huidig document bekijken</button>` : ''}
-        <input type="file" id="onderzoekBestand" style="margin-top:6px" accept=".pdf,.doc,.docx">
-
         <button class="primary" style="margin-top:14px" onclick="slaClassificatieOp()">Opslaan</button>
         <div class="fout verborgen" id="classFout"></div>
         <div class="melding verborgen" id="classMelding"></div>
@@ -322,6 +319,25 @@
           `).join('') || '<div class="meta">Nog geen opvolging ingevoerd.</div>'}
         </div>
       </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="eyebrow" style="margin-top:0">Incidentonderzoek-documenten</div>
+        <div class="meta" style="margin-bottom:8px">Elk geüpload document blijft permanent bewaard — eerdere versies verdwijnen nooit.</div>
+        <label style="margin-top:0">Documentnaam</label>
+        <input type="text" id="nieuwDocNaam" placeholder="Bijv. 'Onderzoeksrapport v1' of 'Foto's ongevalslocatie'">
+        <label>Bestand</label>
+        <input type="file" id="nieuwDocBestand" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+        <button class="ghost" style="margin-top:8px" onclick="voegDocumentToe()">+ Toevoegen aan documentenlijst</button>
+        <div class="fout verborgen" id="docFout"></div>
+        <div style="margin-top:14px">
+          ${(documenten||[]).map(d => `
+            <div class="logboek-entry klikbaar" onclick="bekijkOnderzoek('${d.bestandspad}')">
+              <div style="font-size:13px; font-weight:600;">📄 ${d.documentnaam}</div>
+              <div class="meta" style="margin-top:2px">${d.profielen ? d.profielen.voornaam+' '+d.profielen.achternaam : 'onbekend'} · ${new Date(d.geupload_op).toLocaleString('nl-NL')}</div>
+            </div>
+          `).join('') || '<div class="meta">Nog geen documenten geüpload.</div>'}
+        </div>
+      </div>
     `;
   }
 
@@ -338,14 +354,6 @@
     if(nlaGemeldEl) payload.nla_gemeld = nlaGemeldEl.checked;
     if(nlaNummerEl) payload.nla_registratienummer = nlaNummerEl.value.trim() || null;
 
-    const bestandInput = document.getElementById('onderzoekBestand');
-    if(bestandInput && bestandInput.files[0]){
-      const file = bestandInput.files[0];
-      const pad = `${huidigProfiel.organisatie_id}/${actiefId}-${Date.now()}-${file.name}`;
-      const { error: uploadFout } = await supabaseClient.storage.from('incidentonderzoeken').upload(pad, file);
-      if(uploadFout){ foutEl.textContent = 'Document uploaden mislukt: ' + uploadFout.message; foutEl.classList.remove('verborgen'); return; }
-      payload.incidentonderzoek_pad = pad;
-    }
 
     const { error } = await supabaseClient.from('meldingen').update(payload).eq('id', actiefId);
     if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
@@ -360,6 +368,26 @@
     if(!tekst) return;
     const { error } = await supabaseClient.from('melding_opvolging_entries').insert({ melding_id: actiefId, tekst, aangemaakt_door: huidigProfiel.id });
     if(error){ foutEl.textContent = 'Toevoegen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await render();
+  }
+
+  async function voegDocumentToe(){
+    const documentnaam = document.getElementById('nieuwDocNaam').value.trim();
+    const bestandInput = document.getElementById('nieuwDocBestand');
+    const foutEl = document.getElementById('docFout');
+    foutEl.classList.add('verborgen');
+    if(!documentnaam){ foutEl.textContent = 'Geef het document een naam.'; foutEl.classList.remove('verborgen'); return; }
+    if(!bestandInput.files[0]){ foutEl.textContent = 'Kies een bestand.'; foutEl.classList.remove('verborgen'); return; }
+
+    const file = bestandInput.files[0];
+    const pad = `${huidigProfiel.organisatie_id}/${actiefId}-${Date.now()}-${file.name}`;
+    const { error: uploadFout } = await supabaseClient.storage.from('incidentonderzoeken').upload(pad, file);
+    if(uploadFout){ foutEl.textContent = 'Uploaden mislukt: ' + uploadFout.message; foutEl.classList.remove('verborgen'); return; }
+
+    const { error } = await supabaseClient.from('melding_incidentonderzoek_documenten').insert({
+      melding_id: actiefId, documentnaam, bestandspad: pad, geupload_door: huidigProfiel.id
+    });
+    if(error){ foutEl.textContent = 'Toevoegen aan lijst mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     await render();
   }
 
