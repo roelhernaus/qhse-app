@@ -206,13 +206,17 @@
   async function verzamelOntvangen(){
     const items = [];
 
+    const { data: verborgenNotificaties } = await supabaseClient.from('verborgen_items').select('bron_id').eq('profiel_id', huidigProfiel.id).eq('bron_tabel', 'melding_notificaties');
+    const verborgenNotificatieSet = new Set((verborgenNotificaties||[]).map(v=>v.bron_id));
+
     const { data: notificaties } = await supabaseClient.rpc('mijn_locatie_notificaties');
-    (notificaties||[]).filter(n=>!n.gelezen).forEach(n => items.push({
+    (notificaties||[]).filter(n=>!verborgenNotificatieSet.has(n.notificatie_id)).forEach(n => items.push({
       bron: 'Locatiemelding',
       context: n.locatie_naam || '',
       omschrijving: `Er is een ${n.type.toLowerCase()} gemeld op deze locatie/project.${n.classificatie ? ' Classificatie: ' + n.classificatie + '.' : ''} Neem voor meer inhoud contact op met KAM.`,
-      afgerond: false,
-      actieType: 'locatienotificatie', actieId: n.notificatie_id
+      afgerond: n.gelezen,
+      actieType: n.gelezen ? null : 'locatienotificatie', actieId: n.notificatie_id,
+      verbergTabel: n.gelezen ? 'melding_notificaties' : null, verbergId: n.gelezen ? n.notificatie_id : null
     }));
 
     const { data: meldingen } = await supabaseClient
