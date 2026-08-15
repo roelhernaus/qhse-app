@@ -69,6 +69,12 @@
     <label>Omschrijving</label>
     <textarea rows="5" id="mOmschrijving" placeholder="Beschrijf zo concreet mogelijk wat je hebt gezien of meegemaakt."></textarea>
 
+    <label style="margin-top:14px">Waar precies? (optioneel)</label>
+    <div class="meta" style="margin-bottom:6px">Al ingevuld op basis van de QR-code die je scande — pas het aan als het preciezer kan.</div>
+    <select id="mRegio" onchange="mRegioGewijzigd()"><option value="">Regio — geen keuze</option></select>
+    <select id="mVestiging" style="margin-top:8px"><option value="">Vestiging — geen keuze</option></select>
+    <select id="mLocatie" style="margin-top:8px"><option value="">Locatie/project — geen keuze</option></select>
+
     <div class="meta verborgen" id="mIncidentUitleg" style="margin-top:14px; padding:10px 12px; background:var(--accent-dim); border-radius:8px;">Bij een incident vragen we altijd om contactgegevens, voor eventuele terugkoppeling of onderzoek.</div>
     <div class="checkbox-rij" id="mContactRij">
       <input type="checkbox" id="mContactGewenst" onchange="toggleContactVelden()">
@@ -198,6 +204,29 @@
     }, 500);
   }
 
+  async function vulMLocatieKiezer(){
+    let vooringevuldRegio = '';
+    if(locatie.vestiging_id){
+      const { data: vest } = await supabaseClient.from('vestigingen').select('regio_id').eq('id', locatie.vestiging_id).maybeSingle();
+      if(vest) vooringevuldRegio = vest.regio_id || '';
+    }
+    const { data: regios } = await supabaseClient.from('regios').select('*').eq('organisatie_id', locatie.organisatie_id).order('naam');
+    document.getElementById('mRegio').innerHTML = '<option value="">Regio — geen keuze</option>' + (regios||[]).map(r => `<option value="${r.id}" ${r.id===vooringevuldRegio?'selected':''}>${r.naam}</option>`).join('');
+    await mRegioGewijzigd();
+    if(locatie.vestiging_id) document.getElementById('mVestiging').value = locatie.vestiging_id;
+    document.getElementById('mLocatie').value = locatie.id;
+  }
+
+  async function mRegioGewijzigd(){
+    const regioId = document.getElementById('mRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').eq('organisatie_id', locatie.organisatie_id).order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    document.getElementById('mVestiging').innerHTML = '<option value="">Vestiging — geen keuze</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').eq('organisatie_id', locatie.organisatie_id).order('naam');
+    document.getElementById('mLocatie').innerHTML = '<option value="">Locatie/project — geen keuze</option>' + (locaties||[]).map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+  }
+
   async function init(){
     const code = new URLSearchParams(window.location.search).get('locatie');
     document.getElementById('laad-scherm').style.display = 'none';
@@ -214,6 +243,7 @@
     supabaseClient.from('organisaties').select('accentkleur').eq('id', locatie.organisatie_id).single()
       .then(({ data: kleurOrg }) => { if(kleurOrg && kleurOrg.accentkleur){ document.documentElement.style.setProperty('--accent', kleurOrg.accentkleur); } });
     document.getElementById('locatieNaam').textContent = locatie.naam;
+    await vulMLocatieKiezer();
 
     if(resterendeWachttijdMs() > 0){
       document.getElementById('wacht-scherm').classList.remove('verborgen');
@@ -281,11 +311,13 @@
       if(fotoFout){ foutEl.textContent = 'Foto uploaden mislukt: ' + fotoFout.message; foutEl.classList.remove('verborgen'); return; }
     }
 
+    const gekozenVestiging = document.getElementById('mVestiging').value || locatie.vestiging_id || null;
+    const gekozenLocatie = document.getElementById('mLocatie').value || locatie.id;
     const { error } = await supabaseClient.from('meldingen').insert({
       organisatie_id: locatie.organisatie_id,
       type, omschrijving,
-      locatie_id: locatie.id,
-      vestiging_id: locatie.vestiging_id || null,
+      locatie_id: gekozenLocatie,
+      vestiging_id: gekozenVestiging,
       extern_naam: naam,
       extern_telefoon: telefoon,
       extern_email: email,

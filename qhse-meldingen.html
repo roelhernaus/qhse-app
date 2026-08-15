@@ -104,6 +104,13 @@
     <div class="meta" id="anoniemUitleg" style="margin-top:2px">Niet mogelijk bij Incident.</div>
     <label>Omschrijving</label>
     <textarea id="nieuwOmschrijving" rows="3"></textarea>
+    <label style="margin-top:14px">Waar? (optioneel)</label>
+    <div class="meta" style="margin-bottom:6px">Ook bij een anonieme melding kun je dit zelf invullen — dit onthult niets over jouw eigen locatie, alleen wat jij hier zelf aangeeft.</div>
+    <div class="row" style="gap:8px">
+      <select id="nieuwRegio" onchange="nieuwRegioGewijzigd()" style="flex:1"><option value="">Regio — geen keuze</option></select>
+      <select id="nieuwVestiging" style="flex:1"><option value="">Vestiging — geen keuze</option></select>
+    </div>
+    <select id="nieuwLocatie" style="margin-top:8px"><option value="">Locatie/project — geen keuze</option></select>
     <div class="row" style="margin-top:14px">
       <span></span>
       <button class="primary" onclick="nieuweMeldingVersturen()">Versturen</button>
@@ -216,7 +223,25 @@
     document.getElementById('nieuwFormulier').classList.toggle('verborgen', !nieuwOpen);
     document.getElementById('btnNieuw').textContent = nieuwOpen ? 'Annuleren' : '+ Nieuwe melding';
     checkAnoniemOptie();
+    if(nieuwOpen) vulNieuwLocatieKiezer();
   }
+
+  async function vulNieuwLocatieKiezer(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    document.getElementById('nieuwRegio').innerHTML = '<option value="">Regio — geen keuze</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    await nieuwRegioGewijzigd();
+  }
+
+  async function nieuwRegioGewijzigd(){
+    const regioId = document.getElementById('nieuwRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    document.getElementById('nieuwVestiging').innerHTML = '<option value="">Vestiging — geen keuze</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
+    document.getElementById('nieuwLocatie').innerHTML = '<option value="">Locatie/project — geen keuze</option>' + (locaties||[]).map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+  }
+
   async function nieuweMeldingVersturen(){
     const type = document.getElementById('nieuwType').value;
     const anoniem = document.getElementById('nieuwAnoniem').checked;
@@ -224,15 +249,21 @@
     const foutEl = document.getElementById('nieuwFout');
     foutEl.classList.add('verborgen');
     if(!omschrijving){ foutEl.textContent = 'Vul een omschrijving in.'; foutEl.classList.remove('verborgen'); return; }
+    const gekozenVestiging = document.getElementById('nieuwVestiging').value || null;
+    const gekozenLocatie = document.getElementById('nieuwLocatie').value || null;
     const { error } = await supabaseClient.from('meldingen').insert({
       organisatie_id: (await organisatieId()),
       type, anoniem, omschrijving,
       melder_id: huidigProfiel.id,
-      vestiging_id: anoniem ? null : (huidigProfiel.vestiging_id || null),
+      vestiging_id: gekozenVestiging || (anoniem ? null : (huidigProfiel.vestiging_id || null)),
+      locatie_id: gekozenLocatie,
       ernst: 'amber'
     });
     if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     document.getElementById('nieuwOmschrijving').value = '';
+    document.getElementById('nieuwRegio').value = '';
+    document.getElementById('nieuwVestiging').innerHTML = '<option value="">Vestiging — geen keuze</option>';
+    document.getElementById('nieuwLocatie').value = '';
     toggleNieuw();
     await ververs();
   }
