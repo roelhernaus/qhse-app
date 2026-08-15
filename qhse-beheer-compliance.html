@@ -156,13 +156,27 @@
   }
   function kleurVoor(p){ return p >= 80 ? 'var(--green)' : (p >= 50 ? 'var(--amber)' : 'var(--red)'); }
 
+  let filterVestigingId = '';
+  let filterLeidinggevendeId = '';
+
   async function iedereenInDienst(){
-    const { data } = await supabaseClient.from('profielen').select('id').eq('in_dienst', true);
+    let q = supabaseClient.from('profielen').select('id').eq('in_dienst', true);
+    if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
+    if(filterLeidinggevendeId) q = q.eq('leidinggevende_id', filterLeidinggevendeId);
+    const { data } = await q;
     return (data||[]).map(p=>p.id);
   }
   async function ledenVanGroep(groepId){
     const { data } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', groepId);
-    return (data||[]).map(l=>l.profiel_id);
+    let ids = (data||[]).map(l=>l.profiel_id);
+    if((filterVestigingId || filterLeidinggevendeId) && ids.length){
+      let q = supabaseClient.from('profielen').select('id').in('id', ids);
+      if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
+      if(filterLeidinggevendeId) q = q.eq('leidinggevende_id', filterLeidinggevendeId);
+      const { data: gefilterd } = await q;
+      ids = (gefilterd||[]).map(p=>p.id);
+    }
+    return ids;
   }
   async function toegewezenIds(koppelingType, koppelingGroepId){
     if(koppelingType === 'iedereen') return await iedereenInDienst();
@@ -199,6 +213,8 @@
     let profielenQuery = supabaseClient.from('profielen')
       .select('id, voornaam, achternaam, personeelsnummer, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override')
       .eq('in_dienst', true);
+    if(filterVestigingId) profielenQuery = profielenQuery.eq('vestiging_id', filterVestigingId);
+    if(filterLeidinggevendeId) profielenQuery = profielenQuery.eq('leidinggevende_id', filterLeidinggevendeId);
     if(soort === 'mbb'){
       const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
       if(!mgmtGroep) return { percentage:0, teller:0, noemer:0, detail:[] };
@@ -347,6 +363,21 @@
 
   let laatsteData = {};
 
+  async function vulComplianceFilters(){
+    const { data: vestigingen } = await supabaseClient.from('vestigingen').select('*').order('naam');
+    const vSelect = document.getElementById('cVestiging');
+    if(vSelect) vSelect.innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}" ${filterVestigingId===v.id?'selected':''}>${v.naam}</option>`).join('');
+    const { data: leidinggevenden } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('is_leidinggevende', true).eq('in_dienst', true).order('achternaam');
+    const lSelect = document.getElementById('cLeidinggevende');
+    if(lSelect) lSelect.innerHTML = '<option value="">Alle leidinggevenden</option>' + (leidinggevenden||[]).map(p => `<option value="${p.id}" ${filterLeidinggevendeId===p.id?'selected':''}>${p.voornaam} ${p.achternaam}</option>`).join('');
+  }
+
+  function filterGewijzigd(){
+    filterVestigingId = document.getElementById('cVestiging').value;
+    filterLeidinggevendeId = document.getElementById('cLeidinggevende').value;
+    render();
+  }
+
   async function render(){
     const inhoud = document.getElementById('inhoud');
     const [wpi, mbb, toolboxen, opleidingen, keuringen, acties] = await Promise.all([
@@ -363,6 +394,20 @@
     ];
 
     inhoud.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div class="eyebrow" style="margin-top:0">Filteren (WPI, MBB, Toolboxen, Opleidingen)</div>
+        <div class="row" style="gap:10px; align-items:flex-end;">
+          <div style="flex:1">
+            <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging</label>
+            <select id="cVestiging" onchange="filterGewijzigd()"><option value="">Alle vestigingen</option></select>
+          </div>
+          <div style="flex:1">
+            <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Leidinggevende</label>
+            <select id="cLeidinggevende" onchange="filterGewijzigd()"><option value="">Alle leidinggevenden</option></select>
+          </div>
+        </div>
+      </div>
+
       <div class="donut-grid">
         ${donuts.map(d => `
           <div class="card donut-kaart" style="cursor:pointer" onclick="toonDetail('${d.key}','${d.titel}')">
@@ -383,6 +428,7 @@
         <div class="stat-rij"><span>Openstaande aanvragen arbeidsmiddelen</span><span class="stat-getal">${acties.openMiddelAanvragen}</span></div>
       </div>
     `;
+    await vulComplianceFilters();
   }
 
   function toonDetail(key, titel){

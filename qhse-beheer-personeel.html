@@ -191,6 +191,7 @@
       <div class="row" style="margin-bottom:12px">
         <span class="meta">${(profielen||[]).length} medewerkers</span>
         <button class="ghost" onclick="scherm='uitnodigingen'; render();">Uitnodigingen</button>
+        <a href="qhse-beheer-vestigingen.html" style="text-decoration:none;"><button class="ghost">Regio's &amp; Vestigingen</button></a>
       </div>
       <div class="tabs" style="margin-bottom:14px">
         <div class="tab ${personeelSortering==='achternaam'?'actief':''}" onclick="personeelSortering='achternaam'; render();">Sorteer op achternaam</div>
@@ -209,6 +210,12 @@
   async function renderBewerken(){
     const { data: p, error } = await supabaseClient.from('profielen').select('*').eq('id', actiefProfielId).single();
     if(error) return '<div class="fout">Kon profiel niet laden: ' + error.message + '</div>';
+
+    const { data: vestigingenLijst } = await supabaseClient.from('vestigingen').select('id, naam').order('naam');
+    if(p.leidinggevende_id){
+      const { data: leiding } = await supabaseClient.from('profielen').select('voornaam, achternaam').eq('id', p.leidinggevende_id).maybeSingle();
+      p.leidinggevende = leiding;
+    }
 
     const { data: aanwijzingen } = await supabaseClient
       .from('aanwijzingen').select('*, aanwijzing_soorten(naam), keuringscategorieen(naam)').eq('profiel_id', actiefProfielId).order('aangemaakt_op', { ascending:false });
@@ -237,6 +244,21 @@
         <input type="text" id="bewAchternaam" value="${p.achternaam || ''}">
         <label>Personeelsnummer</label>
         <input type="text" id="bewPersoneelsnr" value="${p.personeelsnummer || ''}">
+        <label>Functie/titel</label>
+        <input type="text" id="bewFunctie" value="${p.functie || ''}" placeholder="Bijv. 'Uitvoerder' of 'Steigerbouwer'">
+        <label>Vestiging</label>
+        <select id="bewVestiging">
+          <option value="">— geen vestiging —</option>
+          ${(vestigingenLijst||[]).map(v => `<option value="${v.id}" ${p.vestiging_id===v.id?'selected':''}>${v.naam}</option>`).join('')}
+        </select>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px">
+          <input type="checkbox" id="bewIsLeidinggevende" style="width:auto" ${p.is_leidinggevende?'checked':''}> Is leidinggevende
+        </label>
+        <label>Leidinggevende van deze persoon</label>
+        <input type="text" id="bewLeidinggevendeZoek" placeholder="Typ een naam om te zoeken…" value="${p.leidinggevende ? p.leidinggevende.voornaam + ' ' + p.leidinggevende.achternaam : ''}" oninput="zoekLeidinggevende(this.value)" autocomplete="off">
+        <input type="hidden" id="bewLeidinggevendeId" value="${p.leidinggevende_id || ''}">
+        <div id="leidinggevendeResultaten" style="position:relative;"></div>
+        ${p.leidinggevende_id ? `<button class="ghost" style="margin-top:6px" onclick="document.getElementById('bewLeidinggevendeZoek').value=''; document.getElementById('bewLeidinggevendeId').value='';">Koppeling verwijderen</button>` : ''}
         <label>Rol</label>
         <select id="bewRol">
           ${ROLLEN.map(r => `<option value="${r}" ${p.rol===r?'selected':''}>${r}</option>`).join('')}
@@ -283,10 +305,42 @@
     await render();
   }
 
+  let leidinggevendeZoekTimer = null;
+  function zoekLeidinggevende(tekst){
+    clearTimeout(leidinggevendeZoekTimer);
+    const resultatenEl = document.getElementById('leidinggevendeResultaten');
+    if(!tekst || tekst.trim().length < 2){ resultatenEl.innerHTML = ''; return; }
+    leidinggevendeZoekTimer = setTimeout(async () => {
+      const { data: gevonden } = await supabaseClient
+        .from('profielen').select('id, voornaam, achternaam, functie')
+        .neq('id', actiefProfielId)
+        .or(`voornaam.ilike.%${tekst}%,achternaam.ilike.%${tekst}%`)
+        .order('achternaam').limit(8);
+      resultatenEl.innerHTML = `
+        <div style="position:absolute; top:2px; left:0; right:0; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.08); z-index:10; max-height:220px; overflow-y:auto;">
+          ${(gevonden||[]).map(g => `
+            <div class="klikbaar" style="padding:9px 12px; font-size:13px;" onclick="kiesLeidinggevende('${g.id}', '${(g.voornaam+' '+g.achternaam).replace(/'/g,"\\'")}')">
+              <b>${g.voornaam} ${g.achternaam}</b>${g.functie ? ` <span class="meta">· ${g.functie}</span>` : ''}
+            </div>
+          `).join('') || '<div class="meta" style="padding:9px 12px;">Niemand gevonden.</div>'}
+        </div>
+      `;
+    }, 250);
+  }
+  function kiesLeidinggevende(id, naam){
+    document.getElementById('bewLeidinggevendeId').value = id;
+    document.getElementById('bewLeidinggevendeZoek').value = naam;
+    document.getElementById('leidinggevendeResultaten').innerHTML = '';
+  }
+
   async function opslaan(id){
     const voornaam = document.getElementById('bewVoornaam').value.trim();
     const achternaam = document.getElementById('bewAchternaam').value.trim();
     const personeelsnummer = document.getElementById('bewPersoneelsnr').value.trim() || null;
+    const functie = document.getElementById('bewFunctie').value.trim() || null;
+    const vestiging_id = document.getElementById('bewVestiging').value || null;
+    const is_leidinggevende = document.getElementById('bewIsLeidinggevende').checked;
+    const leidinggevende_id = document.getElementById('bewLeidinggevendeId').value || null;
     const rol = document.getElementById('bewRol').value;
     const in_dienst = document.getElementById('bewInDienst').checked;
     const datum_in_dienst = document.getElementById('bewDatumInDienst').value || null;
@@ -304,9 +358,14 @@
       foutEl.classList.remove('verborgen');
       return;
     }
+    if(leidinggevende_id === id){
+      foutEl.textContent = 'Iemand kan niet zijn eigen leidinggevende zijn.';
+      foutEl.classList.remove('verborgen');
+      return;
+    }
 
     const { error } = await supabaseClient.from('profielen')
-      .update({ voornaam, achternaam, personeelsnummer, rol, in_dienst, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
+      .update({ voornaam, achternaam, personeelsnummer, functie, vestiging_id, is_leidinggevende, leidinggevende_id, rol, in_dienst, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override }).eq('id', id);
     if(error){
       if(error.message.includes('profielen_personeelsnummer_uniek')){
         foutEl.textContent = `Personeelsnummer "${personeelsnummer}" is al in gebruik door iemand anders binnen deze organisatie. Kies een ander nummer.`;

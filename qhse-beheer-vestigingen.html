@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>QHSE — Regio's & Vestigingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
+    --accent:#2f6f5e; --accent-dim: color-mix(in srgb, var(--accent) 10%, transparent); --amber:#b57a10; --amber-dim:#f6e3bd;
+    --red:#c0392b; --red-dim:#fbeae8; --green:#1c9468; --green-dim:#d3f1e3;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); font-family:'Inter',sans-serif; color:var(--text); }
+  .wrap{ max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+  .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-soft); margin-bottom:4px; }
+  h1{ font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; margin:0; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .whoami{ font-size:12.5px; color:var(--text-soft); }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
+  button.ghost{ background:transparent; }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  .klikbaar{ cursor:pointer; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
+  .meta{ font-size:12px; color:var(--text-soft); }
+  .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  #login-scherm{ max-width:400px; margin:80px auto; }
+  .verborgen{ display:none; }
+  label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input, select{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:'Inter',sans-serif; font-size:13.5px; background:#fafaf9; }
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .org-boom{ margin-left:0; }
+  .org-node{ border-left:2px solid var(--border); padding-left:16px; margin-top:10px; }
+  .org-node-kop{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px 12px; display:inline-block; min-width:200px; }
+</style>
+</head>
+<body>
+
+<div id="laad-scherm" style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div style="font-size:13px; color:var(--text-soft);">Laden…</div>
+</div>
+
+<div id="login-scherm" class="wrap verborgen">
+  <div class="eyebrow">QHSE-systeem</div>
+  <h1 style="margin-bottom:18px">Inloggen</h1>
+  <div class="card">
+    <label>E-mailadres</label>
+    <input type="email" id="loginEmail">
+    <label>Wachtwoord</label>
+    <input type="password" id="loginWachtwoord">
+    <button class="primary" style="width:100%; margin-top:16px" onclick="login()">Inloggen</button>
+    <div class="fout verborgen" id="loginFout"></div>
+  </div>
+</div>
+
+<div id="geen-toegang" class="wrap verborgen">
+  <div class="card">
+    <b>Geen toegang</b>
+    <p class="meta" style="margin-top:8px">Alleen admin en HR kunnen regio's en vestigingen beheren.</p>
+  </div>
+</div>
+
+<div id="app-scherm" class="wrap verborgen">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">QHSE-systeem</div>
+      <h1>Regio's &amp; Vestigingen</h1>
+    </div>
+    <div style="text-align:right">
+      <div class="whoami" id="wieBenIk">—</div>
+      <button class="ghost" style="margin-top:6px" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </div>
+  <div id="inhoud"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  let supabaseClient = null;
+  try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  let huidigProfiel = null;
+  let scherm = 'lijst'; // 'lijst' | 'organigram'
+
+  async function login(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const wachtwoord = document.getElementById('loginWachtwoord').value;
+    const foutEl = document.getElementById('loginFout');
+    foutEl.classList.add('verborgen');
+    if(!supabaseClient){ foutEl.textContent = 'Supabase niet geladen.'; foutEl.classList.remove('verborgen'); return; }
+    try{
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password: wachtwoord });
+      if(error){ foutEl.textContent = 'Inloggen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+      await initApp();
+    }catch(e){
+      foutEl.textContent = 'Onverwachte fout: ' + (e && e.message ? e.message : e);
+      foutEl.classList.remove('verborgen');
+    }
+  }
+  async function uitloggen(){
+    await supabaseClient.auth.signOut();
+    document.getElementById('app-scherm').classList.add('verborgen');
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  async function initApp(){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(!user) return;
+    const { data: profiel, error } = await supabaseClient
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+    if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
+    document.getElementById('login-scherm').classList.add('verborgen');
+    if(profiel.rol !== 'admin' && profiel.rol !== 'hr'){
+      document.getElementById('geen-toegang').classList.remove('verborgen');
+      return;
+    }
+    huidigProfiel = profiel;
+    supabaseClient.from('organisaties').select('accentkleur').eq('id', profiel.organisatie_id).single()
+      .then(({ data: kleurOrg }) => { if(kleurOrg && kleurOrg.accentkleur){ document.documentElement.style.setProperty('--accent', kleurOrg.accentkleur); } });
+    document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
+    document.getElementById('app-scherm').classList.remove('verborgen');
+    await render();
+  }
+
+  function renderTabs(){
+    return `
+      <div class="tabs">
+        <div class="tab ${scherm==='lijst'?'actief':''}" onclick="scherm='lijst'; render();">Regio's &amp; Vestigingen</div>
+        <div class="tab ${scherm==='organigram'?'actief':''}" onclick="scherm='organigram'; render();">Organigram</div>
+      </div>
+    `;
+  }
+
+  async function render(){
+    const inhoud = document.getElementById('inhoud');
+    if(scherm === 'organigram') inhoud.innerHTML = await renderOrganigram();
+    else inhoud.innerHTML = await renderLijst();
+  }
+
+  // ==================== Regio's & Vestigingen ====================
+  async function renderLijst(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    const { data: vestigingen } = await supabaseClient.from('vestigingen').select('*').order('naam');
+
+    const vestigingenPerRegio = {};
+    (vestigingen||[]).forEach(v => {
+      const key = v.regio_id || 'geen';
+      if(!vestigingenPerRegio[key]) vestigingenPerRegio[key] = [];
+      vestigingenPerRegio[key].push(v);
+    });
+
+    const regioBlokken = (regios||[]).map(r => `
+      <div class="card">
+        <div class="row">
+          <b>${r.naam}</b>
+          <button class="ghost" onclick="verwijderRegio('${r.id}')">Verwijderen</button>
+        </div>
+        <div style="margin-top:10px">
+          ${(vestigingenPerRegio[r.id]||[]).map(v => `
+            <div class="row" style="margin-top:6px; padding-left:10px; border-left:2px solid var(--border);">
+              <span class="meta">${v.naam}</span>
+              <button class="ghost" onclick="verwijderVestiging('${v.id}')">Verwijderen</button>
+            </div>
+          `).join('') || '<div class="meta" style="padding-left:10px;">Nog geen vestigingen in deze regio.</div>'}
+        </div>
+      </div>
+    `).join('');
+
+    const geenRegioBlok = (vestigingenPerRegio['geen']||[]).length ? `
+      <div class="card">
+        <b class="meta">Zonder regio</b>
+        <div style="margin-top:10px">
+          ${(vestigingenPerRegio['geen']||[]).map(v => `
+            <div class="row" style="margin-top:6px; padding-left:10px; border-left:2px solid var(--border);">
+              <span class="meta">${v.naam}</span>
+              <button class="ghost" onclick="verwijderVestiging('${v.id}')">Verwijderen</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    return `
+      ${renderTabs()}
+      <div class="eyebrow">Nieuwe regio</div>
+      <div class="card">
+        <input type="text" id="nieuweRegioNaam" placeholder="Bijv. 'Regio West'">
+        <button class="ghost" style="margin-top:10px" onclick="voegRegioToe()">+ Regio toevoegen</button>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Nieuwe vestiging</div>
+      <div class="card">
+        <label style="margin-top:0">Naam</label>
+        <input type="text" id="nieuweVestigingNaam" placeholder="Bijv. 'Vestiging Rotterdam'">
+        <label>Regio (optioneel)</label>
+        <select id="nieuweVestigingRegio">
+          <option value="">— geen regio —</option>
+          ${(regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('')}
+        </select>
+        <button class="ghost" style="margin-top:10px" onclick="voegVestigingToe()">+ Vestiging toevoegen</button>
+        <div class="fout verborgen" id="vestigingFout"></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Overzicht</div>
+      ${regioBlokken}
+      ${geenRegioBlok}
+      ${!(regios||[]).length && !(vestigingen||[]).length ? '<div class="meta">Nog geen regio\'s of vestigingen aangemaakt.</div>' : ''}
+    `;
+  }
+
+  async function voegRegioToe(){
+    const naam = document.getElementById('nieuweRegioNaam').value.trim();
+    if(!naam) return;
+    const { error } = await supabaseClient.from('regios').insert({ organisatie_id: huidigProfiel.organisatie_id, naam });
+    if(error){ alert('Toevoegen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function voegVestigingToe(){
+    const naam = document.getElementById('nieuweVestigingNaam').value.trim();
+    const regio_id = document.getElementById('nieuweVestigingRegio').value || null;
+    const foutEl = document.getElementById('vestigingFout');
+    foutEl.classList.add('verborgen');
+    if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
+    const { error } = await supabaseClient.from('vestigingen').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, regio_id });
+    if(error){ foutEl.textContent = 'Toevoegen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    await render();
+  }
+
+  async function verwijderRegio(id){
+    if(!confirm('Deze regio verwijderen? Vestigingen die eronder vielen blijven bestaan, maar komen dan zonder regio te staan.')) return;
+    const { error } = await supabaseClient.from('regios').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function verwijderVestiging(id){
+    if(!confirm('Deze vestiging verwijderen? Medewerkers en locaties die eraan gekoppeld waren, verliezen die koppeling maar blijven verder bestaan.')) return;
+    const { error } = await supabaseClient.from('vestigingen').delete().eq('id', id);
+    if(error){ alert('Verwijderen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  // ==================== Organigram ====================
+  async function renderOrganigram(){
+    const { data: profielen } = await supabaseClient.from('profielen').select('id, voornaam, achternaam, functie, leidinggevende_id, vestiging_id').eq('in_dienst', true).order('achternaam');
+    const { data: vestigingen } = await supabaseClient.from('vestigingen').select('id, naam');
+    const vestigingMap = {}; (vestigingen||[]).forEach(v => { vestigingMap[v.id] = v.naam; });
+
+    const alleIds = new Set((profielen||[]).map(p=>p.id));
+    const kinderenVan = {};
+    (profielen||[]).forEach(p => {
+      const key = (p.leidinggevende_id && alleIds.has(p.leidinggevende_id)) ? p.leidinggevende_id : 'top';
+      if(!kinderenVan[key]) kinderenVan[key] = [];
+      kinderenVan[key].push(p);
+    });
+
+    function bouwNode(p, diepte){
+      if(diepte > 8) return ''; // vangnet tegen een eventuele rare cirkel
+      const kinderen = kinderenVan[p.id] || [];
+      return `
+        <div class="org-node">
+          <div class="org-node-kop">
+            <b>${p.voornaam} ${p.achternaam}</b>
+            ${p.functie ? `<div class="meta">${p.functie}</div>` : ''}
+            ${p.vestiging_id && vestigingMap[p.vestiging_id] ? `<div class="meta">${vestigingMap[p.vestiging_id]}</div>` : ''}
+          </div>
+          ${kinderen.map(k => bouwNode(k, diepte+1)).join('')}
+        </div>
+      `;
+    }
+
+    const topNiveau = kinderenVan['top'] || [];
+    return `
+      ${renderTabs()}
+      <div class="meta" style="margin-bottom:16px">Gebaseerd op wie bij wie als leidinggevende is ingesteld bij Personeel. Mensen zonder (geldige) leidinggevende staan bovenaan.</div>
+      <div class="org-boom">
+        ${topNiveau.map(p => bouwNode(p, 0)).join('') || '<div class="meta">Nog geen structuur ingesteld.</div>'}
+      </div>
+    `;
+  }
+
+  if(supabaseClient){
+    supabaseClient.auth.getSession().then(({ data:{ session } }) => {
+      document.getElementById('laad-scherm').style.display = 'none';
+      if(session) initApp();
+      else document.getElementById('login-scherm').classList.remove('verborgen');
+    });
+  } else {
+    document.getElementById('laad-scherm').style.display = 'none';
+    document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+</script>
+</body>
+</html>

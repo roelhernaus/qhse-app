@@ -111,6 +111,31 @@
     <div class="fout verborgen" id="nieuwFout"></div>
   </div>
 
+  <div id="filterBlok" class="card verborgen" style="margin-bottom:16px">
+    <div class="eyebrow" style="margin-top:0">Filteren</div>
+    <div class="row" style="gap:10px; align-items:flex-end;">
+      <div style="flex:1">
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Van</label>
+        <input type="date" id="filterDatumVan" onchange="ververs()">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Tot</label>
+        <input type="date" id="filterDatumTot" onchange="ververs()">
+      </div>
+    </div>
+    <div class="row" style="gap:10px; margin-top:10px; align-items:flex-end;">
+      <div style="flex:1">
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio</label>
+        <select id="filterRegio" onchange="filterRegioGewijzigd()"><option value="">Alle regio's</option></select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging</label>
+        <select id="filterVestiging" onchange="ververs()"><option value="">Alle vestigingen</option></select>
+      </div>
+    </div>
+    <button class="ghost" style="margin-top:10px" onclick="document.getElementById('filterDatumVan').value=''; document.getElementById('filterDatumTot').value=''; document.getElementById('filterRegio').value=''; document.getElementById('filterVestiging').value=''; ververs();">Filters wissen</button>
+  </div>
+
   <div id="lijst"></div>
 </div>
 
@@ -163,7 +188,7 @@
     const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) return;
     const { data: profiel, error } = await supabaseClient
-      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id').eq('id', user.id).single();
+      .from('profielen').select('id, voornaam, achternaam, rol, organisatie_id, vestiging_id').eq('id', user.id).single();
     if(error){ alert('Kon profiel niet laden: ' + error.message); return; }
     huidigProfiel = profiel;
     supabaseClient.from('organisaties').select('accentkleur').eq('id', profiel.organisatie_id).single()
@@ -171,6 +196,10 @@
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('login-scherm').classList.add('verborgen');
     document.getElementById('app-scherm').classList.remove('verborgen');
+    if(['admin','kam'].includes(profiel.rol)){
+      document.getElementById('filterBlok').classList.remove('verborgen');
+      await vulFilterDropdowns();
+    }
     await ververs();
   }
 
@@ -199,6 +228,7 @@
       organisatie_id: (await organisatieId()),
       type, anoniem, omschrijving,
       melder_id: huidigProfiel.id,
+      vestiging_id: anoniem ? null : (huidigProfiel.vestiging_id || null),
       ernst: 'amber'
     });
     if(error){ foutEl.textContent = 'Versturen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
@@ -207,6 +237,27 @@
     await ververs();
   }
   let cachedOrgId = null;
+  async function vulFilterDropdowns(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    const regioSelect = document.getElementById('filterRegio');
+    regioSelect.innerHTML = '<option value="">Alle regio\'s</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    await vulVestigingDropdown();
+  }
+
+  async function vulVestigingDropdown(){
+    const regioId = document.getElementById('filterRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    const vestigingSelect = document.getElementById('filterVestiging');
+    vestigingSelect.innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+  }
+
+  async function filterRegioGewijzigd(){
+    await vulVestigingDropdown();
+    await ververs();
+  }
+
   async function organisatieId(){
     if(cachedOrgId) return cachedOrgId;
     const { data } = await supabaseClient.from('profielen').select('organisatie_id').eq('id', huidigProfiel.id).single();
@@ -250,6 +301,23 @@
     } else {
       query = query.eq('melder_id', huidigProfiel.id);
     }
+
+    if(['admin','kam'].includes(huidigProfiel.rol)){
+      const datumVan = document.getElementById('filterDatumVan').value;
+      const datumTot = document.getElementById('filterDatumTot').value;
+      const vestigingId = document.getElementById('filterVestiging').value;
+      const regioId = document.getElementById('filterRegio').value;
+      if(datumVan) query = query.gte('aangemaakt_op', datumVan);
+      if(datumTot) query = query.lte('aangemaakt_op', datumTot + 'T23:59:59');
+      if(vestigingId){
+        query = query.eq('vestiging_id', vestigingId);
+      } else if(regioId){
+        const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').eq('regio_id', regioId);
+        const ids = (vestInRegio||[]).map(v=>v.id);
+        query = query.in('vestiging_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
+      }
+    }
+
     const { data: meldingen, error } = await query;
     if(error){ document.getElementById('lijst').innerHTML = '<div class="fout">Kon meldingen niet laden: ' + error.message + '</div>'; return; }
 
@@ -278,6 +346,11 @@
     if(m.locatie_id){
       const { data: loc } = await supabaseClient.from('locaties').select('naam').eq('id', m.locatie_id).maybeSingle();
       if(loc) locatieNaam = loc.naam;
+    }
+    let vestigingNaam = '';
+    if(m.vestiging_id){
+      const { data: vest } = await supabaseClient.from('vestigingen').select('naam').eq('id', m.vestiging_id).maybeSingle();
+      if(vest) vestigingNaam = vest.naam;
     }
 
     let chatHtml = '';
@@ -324,6 +397,7 @@
       </div>
       <div class="omschrijving">${m.omschrijving}</div>
       ${locatieNaam ? `<div class="meta" style="margin-top:4px">📍 ${locatieNaam}</div>` : ''}
+      ${vestigingNaam ? `<div class="meta" style="margin-top:2px">🏢 ${vestigingNaam}</div>` : ''}
       ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_telefoon ? ' · ' + m.extern_telefoon : ''}${m.extern_email ? ' · ' + m.extern_email : ''} — wil contact</div>` : ''}
       ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkMeldingFoto('${m.foto_pad}')">📷 Foto bekijken</button>` : ''}
       <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : 'In behandeling'} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>

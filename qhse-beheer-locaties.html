@@ -153,7 +153,7 @@
   async function render(){
     const inhoud = document.getElementById('inhoud');
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
-    else if(scherm === 'nieuw') inhoud.innerHTML = renderNieuw();
+    else if(scherm === 'nieuw') inhoud.innerHTML = await renderNieuw();
     else if(scherm === 'locatie') inhoud.innerHTML = await renderLocatie();
   }
 
@@ -203,12 +203,19 @@
     huidigeOrganisatie.checkin_dagelijks_resetten = waarde;
   }
 
-  function renderNieuw(){
+  async function renderNieuw(){
+    const { data: vestigingenLijst } = await supabaseClient.from('vestigingen').select('id, naam').order('naam');
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
         <label style="margin-top:0">Naam van de locatie</label>
         <input type="text" id="nlNaam" placeholder="Bijv. 'Bouwplaats Rotterdam-Zuid'">
+        <label>Vestiging (optioneel)</label>
+        <select id="nlVestiging">
+          <option value="">— geen vestiging —</option>
+          ${(vestigingenLijst||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('')}
+        </select>
+        <div class="meta" style="margin-top:4px">Handig zodat meldingen die via de QR-code op deze locatie binnenkomen automatisch aan de juiste vestiging/regio gekoppeld worden.</div>
         <div class="row" style="margin-top:16px">
           <span></span>
           <button class="primary" onclick="opslaanNieuweLocatie()">Aanmaken</button>
@@ -220,10 +227,11 @@
 
   async function opslaanNieuweLocatie(){
     const naam = document.getElementById('nlNaam').value.trim();
+    const vestiging_id = document.getElementById('nlVestiging').value || null;
     const foutEl = document.getElementById('nlFout');
     foutEl.classList.add('verborgen');
     if(!naam){ foutEl.textContent = 'Naam is verplicht.'; foutEl.classList.remove('verborgen'); return; }
-    const { data, error } = await supabaseClient.from('locaties').insert({ organisatie_id: huidigProfiel.organisatie_id, naam }).select().single();
+    const { data, error } = await supabaseClient.from('locaties').insert({ organisatie_id: huidigProfiel.organisatie_id, naam, vestiging_id }).select().single();
     if(error){ foutEl.textContent = 'Aanmaken mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
     actieveLocatieId = data.id;
     scherm = 'locatie';
@@ -239,6 +247,7 @@
   async function renderLocatie(){
     const { data: l, error } = await supabaseClient.from('locaties').select('*').eq('id', actieveLocatieId).single();
     if(error) return '<div class="fout">Kon locatie niet laden: ' + error.message + '</div>';
+    const { data: vestigingenLijst } = await supabaseClient.from('vestigingen').select('id, naam').order('naam');
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
@@ -276,7 +285,13 @@
       <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
       <div class="card">
         <b>${l.naam}</b>
-        <div class="row" style="margin-top:10px">
+        <label style="margin-top:12px">Vestiging (optioneel)</label>
+        <select id="lVestiging">
+          <option value="">— geen vestiging —</option>
+          ${(vestigingenLijst||[]).map(v => `<option value="${v.id}" ${l.vestiging_id===v.id?'selected':''}>${v.naam}</option>`).join('')}
+        </select>
+        <button class="ghost" style="margin-top:8px" onclick="opslaanLocatieVestiging()">Vestiging opslaan</button>
+        <div class="row" style="margin-top:14px">
           <button class="ghost" onclick="verwijderLocatie()">Verwijderen</button>
           <button class="ghost" onclick="printQr('${checkinUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}', ${checkinLogoUrl ? "'" + checkinLogoUrl.replace(/'/g,"\\'") + "'" : 'null'})">🖨️ Print check-in QR (A4)</button>
         </div>
@@ -363,6 +378,13 @@
     }).eq('id', checkinId);
     if(error){ alert('Uitchecken mislukt: ' + error.message); return; }
     await render();
+  }
+
+  async function opslaanLocatieVestiging(){
+    const vestiging_id = document.getElementById('lVestiging').value || null;
+    const { error } = await supabaseClient.from('locaties').update({ vestiging_id }).eq('id', actieveLocatieId);
+    if(error){ alert('Opslaan mislukt: ' + error.message); return; }
+    alert('Vestiging opgeslagen.');
   }
 
   async function verwijderLocatie(){
