@@ -344,6 +344,26 @@
     if(error){ alert('In behandeling nemen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
+  async function toonOverdragen(id){
+    const blok = document.getElementById('overdrachtBlok' + id);
+    if(!blok.classList.contains('verborgen')){ blok.classList.add('verborgen'); return; }
+    const { data: kandidaten } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('rol', ['admin','kam']).eq('in_dienst', true).order('achternaam');
+    blok.innerHTML = `
+      <div class="row" style="gap:8px; margin-top:10px">
+        <select id="overdrachtNaar${id}" style="flex:1">
+          ${(kandidaten||[]).filter(k=>k.id!==huidigProfiel.id).map(k => `<option value="${k.id}">${k.voornaam} ${k.achternaam}</option>`).join('')}
+        </select>
+        <button class="primary" onclick="draagOver('${id}')">Bevestig</button>
+      </div>`;
+    blok.classList.remove('verborgen');
+  }
+  async function draagOver(id){
+    const naarId = document.getElementById('overdrachtNaar' + id).value;
+    if(!naarId) return;
+    const { error } = await supabaseClient.from('meldingen').update({ actiehouder_id: naarId }).eq('id', id);
+    if(error){ alert('Overdragen mislukt: ' + error.message); return; }
+    await ververs();
+  }
   async function markeerAfgehandeld(id){
     const { data: m } = await supabaseClient.from('meldingen').select('type, classificatie_definitief').eq('id', id).single();
     if(m && m.type === 'Incident' && !m.classificatie_definitief){
@@ -410,7 +430,12 @@
 
     let query = supabaseClient.from('meldingen_view').select('*').order('aangemaakt_op', { ascending:false });
     if(tabActief === 'ontvangen'){
-      query = query.or('actiehouder_id.eq.' + huidigProfiel.id + ',and(actiehouder_id.is.null)');
+      if(['admin','kam'].includes(huidigProfiel.rol)){
+        // Admin/KAM zien alles binnen de organisatie, niet alleen eigen/onbewezen —
+        // zodat collega's altijd kunnen bijspringen (ziekte, vakantie, samenwerking).
+      } else {
+        query = query.or('actiehouder_id.eq.' + huidigProfiel.id + ',and(actiehouder_id.is.null)');
+      }
     } else {
       query = query.eq('melder_id', huidigProfiel.id);
     }
@@ -452,6 +477,13 @@
     const nietToegewezen = !m.actiehouder_id;
     const magClaimen = nietToegewezen && (huidigProfiel.rol === 'admin' || huidigProfiel.rol === 'kam' || huidigProfiel.rol === 'leidinggevende');
     const isBetrokkene = m.actiehouder_id === huidigProfiel.id;
+    const magOverdragen = ['admin','kam'].includes(huidigProfiel.rol) && m.actiehouder_id;
+
+    let actiehouderNaam = '';
+    if(m.actiehouder_id){
+      const { data: ah } = await supabaseClient.from('profielen').select('voornaam, achternaam').eq('id', m.actiehouder_id).maybeSingle();
+      if(ah) actiehouderNaam = ah.voornaam + ' ' + ah.achternaam;
+    }
 
     let locatieNaam = '';
     if(m.locatie_id){
@@ -569,14 +601,16 @@
       ${vestigingNaam ? `<div class="meta" style="margin-top:2px">🏢 ${vestigingNaam}</div>` : ''}
       ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_telefoon ? ' · ' + m.extern_telefoon : ''}${m.extern_email ? ' · ' + m.extern_email : ''} — wil contact</div>` : ''}
       ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkMeldingFoto('${m.foto_pad}')">📷 Foto bekijken</button>` : ''}
-      <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : 'In behandeling'} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+      <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : `In behandeling bij ${actiehouderNaam || '—'}`} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
       <div class="row" style="margin-top:12px">
         <span></span>
         <div style="display:flex; gap:8px">
           ${magClaimen ? `<button class="ghost" onclick="neemInBehandeling('${m.id}')">Neem in behandeling</button>` : ''}
+          ${magOverdragen ? `<button class="ghost" onclick="toonOverdragen('${m.id}')">Overdragen</button>` : ''}
           ${isBetrokkene && m.status!=='Afgehandeld' ? `<button class="ghost" onclick="markeerAfgehandeld('${m.id}')">Markeer afgehandeld</button>` : ''}
         </div>
       </div>
+      <div class="verborgen" id="overdrachtBlok${m.id}"></div>
       ${classificatieHtml}
       ${chatHtml}
     </div>`;
