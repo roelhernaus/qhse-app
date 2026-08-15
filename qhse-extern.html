@@ -222,6 +222,11 @@
         .from('melding_berichten').select('*').eq('melding_id', m.id).order('aangemaakt_op');
       const statusKleur = m.status === 'Afgehandeld' ? 'background:var(--green-dim); color:var(--green);'
         : (m.status === 'In behandeling' ? 'background:var(--amber-dim); color:var(--amber);' : '');
+      let locatieNaam = '';
+      if(m.locatie_id){
+        const { data: loc } = await supabaseClient.from('locaties').select('naam').eq('id', m.locatie_id).maybeSingle();
+        if(loc) locatieNaam = loc.naam;
+      }
       return `
         <div class="card">
           <div class="row">
@@ -229,17 +234,99 @@
             <span class="tag" style="${statusKleur}">${m.status}</span>
           </div>
           <div style="font-size:13px; margin-top:8px">${m.omschrijving}</div>
+          ${locatieNaam ? `<div class="meta" style="margin-top:4px">📍 ${locatieNaam}</div>` : ''}
+          ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkNmFoto('${m.foto_pad}')">Foto bekijken</button>` : ''}
           <div class="meta" style="margin-top:6px">${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
           ${(berichten||[]).map(b => `<div class="bericht">${b.tekst}</div>`).join('')}
+          ${m.status !== 'Afgehandeld' ? `
+            <div class="row" style="margin-top:10px; gap:6px;">
+              <input type="text" id="chatVeld${m.id}" placeholder="Typ een bericht…" style="flex:1" onkeydown="if(event.key==='Enter') verstuurNmBericht('${m.id}')">
+              <button class="ghost" onclick="verstuurNmBericht('${m.id}')">Versturen</button>
+            </div>
+          ` : ''}
         </div>`;
     }));
 
     return kaarten.join('') || '<div class="meta">Je hebt nog geen meldingen ingediend.</div>';
   }
 
+  async function verstuurNmBericht(meldingId){
+    const input = document.getElementById('chatVeld' + meldingId);
+    const tekst = input.value.trim();
+    if(!tekst) return;
+    const { error } = await supabaseClient.from('melding_berichten').insert({ melding_id: meldingId, afzender_id: huidigProfiel.id, tekst });
+    if(error){ alert('Bericht versturen mislukt: ' + error.message); return; }
+    await render();
+  }
+
+  async function bekijkNmFoto(pad){
+    const { data, error } = await supabaseClient.storage.from('meldingen-extern-fotos').createSignedUrl(pad, 300);
+    if(error){ alert('Kon foto niet openen: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
   function nieuweMelding(){
     scherm = 'nieuw';
     render();
+    vulNmLocatieKiezer();
+  }
+
+  async function vulNmLocatieKiezer(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    const regioSelect = document.getElementById('nmRegio');
+    if(!regioSelect) return;
+    regioSelect.innerHTML = '<option value="">Regio — geen keuze</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    await nmRegioGewijzigd();
+  }
+
+  async function nmRegioGewijzigd(){
+    const regioId = document.getElementById('nmRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    document.getElementById('nmVestiging').innerHTML = '<option value="">Vestiging — geen keuze</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    document.getElementById('nmLocatie').innerHTML = '<option value="">Locatie/project — geen keuze</option>' + (locaties||[]).map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+  }
+
+  let nmGecomprimeerdeFotoBlob = null;
+  function verwerkNmFoto(inputEl){
+    const statusEl = document.getElementById('nmFotoStatus');
+    const knop = document.getElementById('nmVerstuurKnop');
+    nmGecomprimeerdeFotoBlob = null;
+    const file = inputEl.files[0];
+    if(!file) return;
+    knop.disabled = true;
+    knop.textContent = 'Even geduld — foto wordt verwerkt…';
+    statusEl.textContent = 'Foto verwerken…';
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    img.onload = () => {
+      const MAX_AFMETING = 1600;
+      let { width, height } = img;
+      if(width > MAX_AFMETING || height > MAX_AFMETING){
+        const schaal = MAX_AFMETING / Math.max(width, height);
+        width = Math.round(width * schaal);
+        height = Math.round(height * schaal);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        knop.disabled = false;
+        knop.textContent = 'Melding versturen';
+        if(blob.size > 3 * 1024 * 1024){
+          statusEl.textContent = 'Deze foto is ook na comprimeren te groot (max 3MB). Kies een andere foto.';
+          nmGecomprimeerdeFotoBlob = null;
+          inputEl.value = '';
+          return;
+        }
+        nmGecomprimeerdeFotoBlob = blob;
+        statusEl.textContent = `✓ Klaar (${(blob.size/1024/1024).toFixed(1)}MB)`;
+      }, 'image/jpeg', 0.75);
+    };
+    reader.readAsDataURL(file);
   }
 
   function renderNieuw(){
@@ -253,9 +340,19 @@
         </select>
         <label>Omschrijving</label>
         <textarea rows="4" id="nmOmschrijving" placeholder="Beschrijf zo concreet mogelijk wat je hebt gezien of meegemaakt."></textarea>
+
+        <label style="margin-top:14px">Waar? (optioneel)</label>
+        <select id="nmRegio" onchange="nmRegioGewijzigd()"><option value="">Regio — geen keuze</option></select>
+        <select id="nmVestiging" style="margin-top:8px"><option value="">Vestiging — geen keuze</option></select>
+        <select id="nmLocatie" style="margin-top:8px"><option value="">Locatie/project — geen keuze</option></select>
+
+        <label style="margin-top:14px">Foto (optioneel, max 3MB)</label>
+        <input type="file" accept="image/*" capture="environment" id="nmFoto" onchange="verwerkNmFoto(this)">
+        <div class="meta" id="nmFotoStatus" style="margin-top:4px"></div>
+
         <div class="row" style="margin-top:16px">
           <button class="ghost" onclick="scherm='lijst'; render();">Annuleren</button>
-          <button class="primary" onclick="verstuurMelding()">Indienen</button>
+          <button class="primary" id="nmVerstuurKnop" onclick="verstuurMelding()">Melding versturen</button>
         </div>
         <div class="fout verborgen" id="nmFout"></div>
       </div>
@@ -269,11 +366,21 @@
     foutEl.classList.add('verborgen');
     if(!omschrijving){ foutEl.textContent = 'Omschrijving is verplicht.'; foutEl.classList.remove('verborgen'); return; }
 
-    const { data: profielMetOrg } = await supabaseClient.from('profielen').select('organisatie_id').eq('id', huidigProfiel.id).single();
+    let fotoPad = null;
+    if(nmGecomprimeerdeFotoBlob){
+      fotoPad = `${huidigProfiel.organisatie_id}/${Date.now()}.jpg`;
+      const { error: fotoFout } = await supabaseClient.storage.from('meldingen-extern-fotos').upload(fotoPad, nmGecomprimeerdeFotoBlob);
+      if(fotoFout){ foutEl.textContent = 'Foto uploaden mislukt: ' + fotoFout.message; foutEl.classList.remove('verborgen'); return; }
+    }
+
+    const vestiging_id = document.getElementById('nmVestiging').value || null;
+    const locatie_id = document.getElementById('nmLocatie').value || null;
     const { error } = await supabaseClient.from('meldingen').insert({
-      organisatie_id: profielMetOrg.organisatie_id, type, omschrijving, melder_id: huidigProfiel.id
+      organisatie_id: huidigProfiel.organisatie_id, type, omschrijving, melder_id: huidigProfiel.id,
+      vestiging_id, locatie_id, foto_pad: fotoPad
     });
     if(error){ foutEl.textContent = 'Indienen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
+    nmGecomprimeerdeFotoBlob = null;
     scherm = 'lijst';
     await render();
   }
