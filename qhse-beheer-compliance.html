@@ -158,6 +158,30 @@
   }
   function kleurVoor(p){ return p >= 80 ? 'var(--green)' : (p >= 50 ? 'var(--amber)' : 'var(--red)'); }
 
+  function meerdeligeDonutSvg(segmenten){
+    // segmenten: [{ aantal, kleur }]
+    const totaal = segmenten.reduce((s,x)=>s+x.aantal, 0);
+    const omtrek = 2 * Math.PI * 40;
+    if(totaal === 0){
+      return `<svg viewBox="0 0 100 100" width="110" height="110">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#eee" stroke-width="11"/>
+        <text x="50" y="57" text-anchor="middle" font-size="15" font-weight="700" font-family="Oswald" fill="var(--text-soft)">0</text>
+      </svg>`;
+    }
+    let offset = 0;
+    const bogen = segmenten.filter(s=>s.aantal>0).map(s => {
+      const lengte = (s.aantal/totaal) * omtrek;
+      const boog = `<circle cx="50" cy="50" r="40" fill="none" stroke="${s.kleur}" stroke-width="11" stroke-dasharray="${lengte} ${omtrek}" stroke-dashoffset="${-offset}" transform="rotate(-90 50 50)"/>`;
+      offset += lengte;
+      return boog;
+    }).join('');
+    return `<svg viewBox="0 0 100 100" width="110" height="110">
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#eee" stroke-width="11"/>
+      ${bogen}
+      <text x="50" y="57" text-anchor="middle" font-size="22" font-weight="700" font-family="Oswald" fill="var(--text)">${totaal}</text>
+    </svg>`;
+  }
+
   let gekozenRegios = new Set();
   let gekozenVestigingen = new Set();
   let filterLeidinggevendeId = '';
@@ -361,6 +385,17 @@
     return { percentage: Math.round((teller/middelen.length)*100), teller, noemer: middelen.length, detail };
   }
 
+  async function berekenIncidentenPerStatus(){
+    const { data: incidenten } = await supabaseClient.from('meldingen').select('status').eq('type', 'Incident');
+    const lijst = incidenten || [];
+    return {
+      nieuw: lijst.filter(m => m.status === 'Nieuw').length,
+      inBehandeling: lijst.filter(m => m.status === 'In behandeling').length,
+      afgehandeld: lijst.filter(m => m.status === 'Afgehandeld').length,
+      totaal: lijst.length
+    };
+  }
+
   async function berekenActies(){
     const { data: meldingen } = await supabaseClient.from('meldingen').select('status');
     const openMeldingen = (meldingen||[]).filter(m=>m.status!=='Afgehandeld').length;
@@ -419,8 +454,8 @@
 
   async function render(){
     const inhoud = document.getElementById('inhoud');
-    const [wpi, mbb, toolboxen, opleidingen, keuringen, acties] = await Promise.all([
-      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies()
+    const [wpi, mbb, toolboxen, opleidingen, keuringen, acties, incidentenStatus] = await Promise.all([
+      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies(), berekenIncidentenPerStatus()
     ]);
     laatsteData = { wpi, mbb, toolboxen, opleidingen, keuringen };
 
@@ -444,6 +479,23 @@
         <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-weight:400;">
           <input type="checkbox" id="cInclusiefLeiding" style="width:auto" ${filterInclusiefLeiding?'checked':''} onchange="filterGewijzigd()"> Inclusief de leidinggevende zelf
         </label>
+      </div>
+
+      <div class="eyebrow">Incidenten</div>
+      <div class="card" style="margin-bottom:16px; cursor:pointer;" onclick="window.location.href='qhse-beheer-incidenten.html'">
+        <div class="row" style="align-items:center; gap:20px;">
+          ${meerdeligeDonutSvg([
+            { aantal: incidentenStatus.nieuw, kleur: 'var(--red)' },
+            { aantal: incidentenStatus.inBehandeling, kleur: 'var(--amber)' },
+            { aantal: incidentenStatus.afgehandeld, kleur: 'var(--green)' },
+          ])}
+          <div>
+            <div style="font-size:13px"><span style="color:var(--red); font-weight:700;">●</span> Nieuw — ${incidentenStatus.nieuw}</div>
+            <div style="font-size:13px; margin-top:4px"><span style="color:var(--amber); font-weight:700;">●</span> In behandeling — ${incidentenStatus.inBehandeling}</div>
+            <div style="font-size:13px; margin-top:4px"><span style="color:var(--green); font-weight:700;">●</span> Afgehandeld — ${incidentenStatus.afgehandeld}</div>
+            <div class="meta" style="margin-top:8px; color:var(--accent);">Naar Incidenten-omgeving →</div>
+          </div>
+        </div>
       </div>
 
       <div class="donut-grid">
