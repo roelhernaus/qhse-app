@@ -547,9 +547,16 @@
     statusEl.textContent = 'Meldingen ophalen…';
     const { data: meldingen } = await supabaseClient.from('meldingen_view')
       .select('*, vestigingen(naam)').eq('organisatie_id', orgId).order('aangemaakt_op', { ascending:false });
+    const actiehouderIds = [...new Set((meldingen||[]).map(m=>m.actiehouder_id).filter(Boolean))];
+    let actiehoudersMap = {};
+    if(actiehouderIds.length){
+      const { data: actiehouders } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('id', actiehouderIds);
+      (actiehouders||[]).forEach(a => { actiehoudersMap[a.id] = a.voornaam + ' ' + a.achternaam; });
+    }
     zetTabblad('Meldingen', (meldingen||[]).map(m => ({
       Type: m.type, Status: m.status, Anoniem: m.anoniem ? 'Ja' : 'Nee',
       Omschrijving: m.omschrijving, Vestiging: m.vestigingen ? m.vestigingen.naam : '',
+      Actiehouder: m.actiehouder_id ? (actiehoudersMap[m.actiehouder_id] || '') : 'Nog niemand',
       Aangemaakt: new Date(m.aangemaakt_op).toLocaleString('nl-NL')
     })));
 
@@ -602,8 +609,32 @@
     zetTabblad('Keuringen', keuringRijen);
 
     statusEl.textContent = 'Stoffenregister ophalen…';
-    const { data: stoffen } = await supabaseClient.from('stoffen').select('naam, fabrikant, cas_nummer').eq('organisatie_id', orgId).order('naam');
-    zetTabblad('Stoffenregister', (stoffen||[]).map(s => ({ Naam: s.naam, Fabrikant: s.fabrikant || '', 'CAS-nummer': s.cas_nummer || '' })));
+    const { data: stoffen } = await supabaseClient.from('stoffen').select('id, naam, fabrikant, cas_nummer').eq('organisatie_id', orgId).order('naam');
+    const { data: wiks } = await supabaseClient.from('wik').select('*').eq('organisatie_id', orgId);
+    const wikPerStof = {};
+    (wiks||[]).forEach(w => { wikPerStof[w.stof_id] = w; });
+    const wikIds = (wiks||[]).map(w=>w.id);
+    let hzinnenPerWik = {}, pzinnenPerWik = {};
+    if(wikIds.length){
+      const { data: hkoppels } = await supabaseClient.from('wik_hzinnen_gekoppeld').select('wik_id, wik_hzinnen(code, tekst)').in('wik_id', wikIds);
+      (hkoppels||[]).forEach(k => { (hzinnenPerWik[k.wik_id] = hzinnenPerWik[k.wik_id] || []).push(`${k.wik_hzinnen.code}: ${k.wik_hzinnen.tekst}`); });
+      const { data: pkoppels } = await supabaseClient.from('wik_pzinnen_gekoppeld').select('wik_id, wik_pzinnen(code, tekst)').in('wik_id', wikIds);
+      (pkoppels||[]).forEach(k => { (pzinnenPerWik[k.wik_id] = pzinnenPerWik[k.wik_id] || []).push(`${k.wik_pzinnen.code}: ${k.wik_pzinnen.tekst}`); });
+    }
+    zetTabblad('Stoffenregister', (stoffen||[]).map(s => {
+      const w = wikPerStof[s.id];
+      return {
+        Naam: s.naam, Fabrikant: s.fabrikant || '', 'CAS-nummer': s.cas_nummer || '',
+        'WIK aanwezig': w ? 'Ja' : 'Nee',
+        'H-zinnen': w ? (hzinnenPerWik[w.id]||[]).join(' | ') : '',
+        'P-zinnen': w ? (pzinnenPerWik[w.id]||[]).join(' | ') : '',
+        PBM: w ? (w.pbm || '') : '',
+        EHBO: w ? (w.ehbo || '') : '',
+        Calamiteiten: w ? (w.calamiteiten || '') : '',
+        'Opslag/afval': w ? (w.opslag_afval || '') : '',
+        'Extra toelichting': w ? (w.extra_tekst || '') : ''
+      };
+    }));
 
     statusEl.textContent = 'Audittrail ophalen…';
     const { data: audit } = await supabaseClient.from('audit_log')
