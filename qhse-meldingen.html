@@ -344,72 +344,16 @@
     if(error){ alert('In behandeling nemen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
   }
-  async function toonOverdragen(id){
-    const blok = document.getElementById('overdrachtBlok' + id);
-    if(!blok.classList.contains('verborgen')){ blok.classList.add('verborgen'); return; }
-    const { data: kandidaten } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('rol', ['admin','kam']).eq('in_dienst', true).order('achternaam');
-    blok.innerHTML = `
-      <div class="row" style="gap:8px; margin-top:10px">
-        <select id="overdrachtNaar${id}" style="flex:1">
-          ${(kandidaten||[]).filter(k=>k.id!==huidigProfiel.id).map(k => `<option value="${k.id}">${k.voornaam} ${k.achternaam}</option>`).join('')}
-        </select>
-        <button class="primary" onclick="draagOver('${id}')">Bevestig</button>
-      </div>`;
-    blok.classList.remove('verborgen');
-  }
-  async function draagOver(id){
-    const naarId = document.getElementById('overdrachtNaar' + id).value;
-    if(!naarId) return;
-    const { error } = await supabaseClient.from('meldingen').update({ actiehouder_id: naarId }).eq('id', id);
-    if(error){ alert('Overdragen mislukt: ' + error.message); return; }
-    await ververs();
-  }
   async function markeerAfgehandeld(id){
     const { data: m } = await supabaseClient.from('meldingen').select('type, classificatie_definitief').eq('id', id).single();
     if(m && m.type === 'Incident' && !m.classificatie_definitief){
-      alert('Deze melding kan pas afgehandeld worden nadat er een definitieve classificatie is gekozen. Open "🏷️ Classificatie & opvolging" om dit in te stellen.');
+      alert('Deze melding kan pas afgehandeld worden nadat er een definitieve classificatie is gekozen. Ga naar Beheer → Incidenten om dit in te stellen.');
       return;
     }
     const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel) — bijv. hoe dit is opgevolgd:');
     const { error } = await supabaseClient.from('meldingen').update({ status: 'Afgehandeld', afhandel_notitie: afhandel_notitie || null }).eq('id', id);
     if(error){ alert('Afhandelen mislukt: ' + error.message); console.error(error); return; }
     await ververs();
-  }
-  let classificatieOpenId = null;
-  async function toggleClassificatie(id){
-    classificatieOpenId = (classificatieOpenId === id) ? null : id;
-    await ververs();
-  }
-  async function slaClassificatieOp(id){
-    const foutEl = document.getElementById('classFout' + id);
-    foutEl.classList.add('verborgen');
-    const classificatie_definitief = document.getElementById('classDef' + id).value || null;
-    const materiele_schade_bandbreedte = document.getElementById('schadeBand' + id).value || null;
-    const opvolging_tekst = document.getElementById('opvolging' + id).value.trim() || null;
-    const payload = { classificatie_definitief, materiele_schade_bandbreedte, opvolging_tekst };
-
-    const nlaGemeldEl = document.getElementById('nlaGemeld' + id);
-    const nlaNummerEl = document.getElementById('nlaNummer' + id);
-    if(nlaGemeldEl) payload.nla_gemeld = nlaGemeldEl.checked;
-    if(nlaNummerEl) payload.nla_registratienummer = nlaNummerEl.value.trim() || null;
-
-    const bestandInput = document.getElementById('onderzoekBestand' + id);
-    if(bestandInput && bestandInput.files[0]){
-      const file = bestandInput.files[0];
-      const pad = `${huidigProfiel.organisatie_id}/${id}-${Date.now()}-${file.name}`;
-      const { error: uploadFout } = await supabaseClient.storage.from('incidentonderzoeken').upload(pad, file);
-      if(uploadFout){ foutEl.textContent = 'Document uploaden mislukt: ' + uploadFout.message; foutEl.classList.remove('verborgen'); return; }
-      payload.incidentonderzoek_pad = pad;
-    }
-
-    const { error } = await supabaseClient.from('meldingen').update(payload).eq('id', id);
-    if(error){ foutEl.textContent = 'Opslaan mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }
-    await ververs();
-  }
-  async function bekijkIncidentonderzoek(pad){
-    const { data, error } = await supabaseClient.storage.from('incidentonderzoeken').createSignedUrl(pad, 300);
-    if(error){ alert('Kon document niet openen: ' + error.message); return; }
-    window.open(data.signedUrl, '_blank');
   }
   async function toggleChat(id){
     chatOpenId = (chatOpenId === id) ? null : id;
@@ -477,7 +421,6 @@
     const nietToegewezen = !m.actiehouder_id;
     const magClaimen = nietToegewezen && (huidigProfiel.rol === 'admin' || huidigProfiel.rol === 'kam' || huidigProfiel.rol === 'leidinggevende');
     const isBetrokkene = m.actiehouder_id === huidigProfiel.id;
-    const magOverdragen = ['admin','kam'].includes(huidigProfiel.rol) && m.actiehouder_id;
 
     let actiehouderNaam = '';
     if(m.actiehouder_id){
@@ -530,64 +473,6 @@
         </div>`;
     }
 
-    let classificatieHtml = '';
-    if(m.type === 'Incident' && ['admin','kam'].includes(huidigProfiel.rol)){
-      const classOpen = classificatieOpenId === m.id;
-      const NLA_LIJST = ['Ongeval met letsel/verzuim >3 werkdagen','Ongeval met blijvend letsel','Dodelijk ongeval'];
-      const nlaVerplicht = m.classificatie_definitief && NLA_LIJST.includes(m.classificatie_definitief);
-      const magWijzigen = huidigProfiel.rol === 'admin' || !m.classificatie_definitief || (huidigProfiel.rol === 'kam' && huidigProfiel.is_leidinggevende);
-      const KLASSEN = ['Milieuincident','Bijna-ongeval','Ongeval zonder verzuim','Ongeval met EHBO','Ongeval met letsel/verzuim <1 dag','Ongeval met letsel/verzuim >1 dag','Ongeval met letsel/verzuim >3 werkdagen','Ongeval met blijvend letsel','Dodelijk ongeval','Beroepsziekte','Verkeersongeval','Brand','Materiële schade','Anders/onbekend'];
-      let historieHtml = '';
-      if(classOpen){
-        const { data: historie } = await supabaseClient.from('melding_classificatie_historie').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('gewijzigd_op', { ascending:false });
-        if(historie && historie.length > 1){
-          historieHtml = `<div class="meta" style="margin-top:10px; font-weight:600">Wijzigingsgeschiedenis</div>` +
-            historie.map(h => `<div class="meta">${h.classificatie} — ${h.profielen ? h.profielen.voornaam+' '+h.profielen.achternaam : 'onbekend'}, ${new Date(h.gewijzigd_op).toLocaleString('nl-NL')}</div>`).join('');
-        }
-      }
-      classificatieHtml = `
-        <div class="chat">
-          <button class="ghost" onclick="toggleClassificatie('${m.id}')">${classOpen?'Classificatie sluiten':'🏷️ Classificatie & opvolging'}</button>
-          ${classOpen ? `
-            <div style="margin-top:10px">
-              <div class="meta">Inschatting van de melder: <b>${m.classificatie_melder || 'geen opgegeven'}</b></div>
-              <label style="margin-top:10px">Definitieve classificatie ${!m.classificatie_definitief ? '(verplicht vóór afhandelen)' : ''}</label>
-              <select id="classDef${m.id}" ${magWijzigen ? '' : 'disabled'}>
-                <option value="">— nog niet bepaald —</option>
-                ${KLASSEN.map(k => `<option ${m.classificatie_definitief===k?'selected':''}>${k}</option>`).join('')}
-              </select>
-              ${!magWijzigen ? '<div class="meta" style="margin-top:2px">Alleen een KAM-medewerker met leidinggevende-rechten (of admin) mag dit nog wijzigen.</div>' : ''}
-
-              <label style="margin-top:10px">Materiële schade — bandbreedte (indien van toepassing)</label>
-              <select id="schadeBand${m.id}" ${magWijzigen ? '' : 'disabled'}>
-                <option value="">—</option>
-                ${['< €500','€500 - €2.500','€2.500 - €10.000','> €10.000'].map(b => `<option ${m.materiele_schade_bandbreedte===b?'selected':''}>${b}</option>`).join('')}
-              </select>
-
-              ${nlaVerplicht ? `
-                <div class="waarschuwing" style="margin-top:10px">⚠ Dit type moet gemeld worden bij de Nederlandse Arbeidsinspectie (NLA) — onverwijld, zonder uitstel.</div>
-                <label style="display:flex; align-items:center; gap:8px; margin-top:8px">
-                  <input type="checkbox" id="nlaGemeld${m.id}" style="width:auto" ${m.nla_gemeld?'checked':''}> Al gemeld bij de NLA
-                </label>
-                <label style="margin-top:6px">NLA-registratienummer</label>
-                <input type="text" id="nlaNummer${m.id}" value="${m.nla_registratienummer||''}">
-              ` : ''}
-
-              <label style="margin-top:10px">Opvolging</label>
-              <textarea id="opvolging${m.id}" rows="3">${m.opvolging_tekst||''}</textarea>
-
-              <label style="margin-top:10px">Incidentonderzoek (document)</label>
-              ${m.incidentonderzoek_pad ? `<button class="ghost" onclick="bekijkIncidentonderzoek('${m.incidentonderzoek_pad}')">📄 Huidig document bekijken</button>` : ''}
-              <input type="file" id="onderzoekBestand${m.id}" style="margin-top:6px" accept=".pdf,.doc,.docx">
-
-              <button class="primary" style="margin-top:12px" onclick="slaClassificatieOp('${m.id}')">Opslaan</button>
-              <div class="fout verborgen" id="classFout${m.id}"></div>
-              ${historieHtml}
-            </div>
-          ` : ''}
-        </div>`;
-    }
-
     return `<div class="card">
       <div class="row">
         <div>
@@ -601,17 +486,14 @@
       ${vestigingNaam ? `<div class="meta" style="margin-top:2px">🏢 ${vestigingNaam}</div>` : ''}
       ${m.extern_naam ? `<div class="meta" style="margin-top:4px">Extern gemeld door ${m.extern_naam}${m.extern_telefoon ? ' · ' + m.extern_telefoon : ''}${m.extern_email ? ' · ' + m.extern_email : ''} — wil contact</div>` : ''}
       ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkMeldingFoto('${m.foto_pad}')">📷 Foto bekijken</button>` : ''}
-      <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : `In behandeling bij ${actiehouderNaam || '—'}`} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
+      <div class="meta">${nietToegewezen ? 'Nog niet toegewezen' : `In behandeling bij: ${actiehouderNaam || '—'}`} · ${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
       <div class="row" style="margin-top:12px">
         <span></span>
         <div style="display:flex; gap:8px">
           ${magClaimen ? `<button class="ghost" onclick="neemInBehandeling('${m.id}')">Neem in behandeling</button>` : ''}
-          ${magOverdragen ? `<button class="ghost" onclick="toonOverdragen('${m.id}')">Overdragen</button>` : ''}
           ${isBetrokkene && m.status!=='Afgehandeld' ? `<button class="ghost" onclick="markeerAfgehandeld('${m.id}')">Markeer afgehandeld</button>` : ''}
         </div>
       </div>
-      <div class="verborgen" id="overdrachtBlok${m.id}"></div>
-      ${classificatieHtml}
       ${chatHtml}
     </div>`;
   }

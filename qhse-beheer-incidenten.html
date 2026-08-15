@@ -151,8 +151,27 @@
 
   async function render(){
     const inhoud = document.getElementById('inhoud');
-    if(scherm === 'detail') inhoud.innerHTML = await renderDetail();
-    else inhoud.innerHTML = await renderLijst();
+    if(scherm === 'detail'){
+      inhoud.innerHTML = await renderDetail();
+      await vulOverdrachtKandidaten();
+    } else {
+      inhoud.innerHTML = await renderLijst();
+    }
+  }
+
+  async function vulOverdrachtKandidaten(){
+    const select = document.getElementById('overdrachtNaar');
+    if(!select) return;
+    const { data: kandidaten } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').in('rol', ['admin','kam']).eq('in_dienst', true).order('achternaam');
+    select.innerHTML = (kandidaten||[]).filter(k=>k.id!==huidigProfiel.id).map(k => `<option value="${k.id}">${k.voornaam} ${k.achternaam}</option>`).join('');
+  }
+
+  async function draagOver(){
+    const naarId = document.getElementById('overdrachtNaar').value;
+    if(!naarId) return;
+    const { error } = await supabaseClient.from('meldingen').update({ actiehouder_id: naarId }).eq('id', actiefId);
+    if(error){ alert('Overdragen mislukt: ' + error.message); return; }
+    await render();
   }
 
   async function renderLijst(){
@@ -215,6 +234,14 @@
     if(m.locatie_id){ const { data: loc } = await supabaseClient.from('locaties').select('naam').eq('id', m.locatie_id).maybeSingle(); if(loc) locatieNaam = loc.naam; }
     if(m.vestiging_id){ const { data: vest } = await supabaseClient.from('vestigingen').select('naam').eq('id', m.vestiging_id).maybeSingle(); if(vest) vestigingNaam = vest.naam; }
 
+    let actiehouderNaam = '';
+    if(m.actiehouder_id){
+      const { data: ah } = await supabaseClient.from('profielen').select('voornaam, achternaam').eq('id', m.actiehouder_id).maybeSingle();
+      if(ah) actiehouderNaam = ah.voornaam + ' ' + ah.achternaam;
+    }
+    const magOverdragen = huidigProfiel.rol === 'admin'
+      || (huidigProfiel.rol === 'kam' && (m.actiehouder_id === huidigProfiel.id || huidigProfiel.is_leidinggevende));
+
     const magWijzigenClassificatie = huidigProfiel.rol === 'admin' || !m.classificatie_definitief || (huidigProfiel.rol === 'kam' && huidigProfiel.is_leidinggevende);
     const nlaVerplicht = m.classificatie_definitief && NLA_LIJST.includes(m.classificatie_definitief);
 
@@ -231,6 +258,13 @@
         </div>
         <div class="meta" style="margin-top:8px">${m.omschrijving}</div>
         <div class="meta" style="margin-top:8px">Gemeld door: ${melderNaam} · ${new Date(m.aangemaakt_op).toLocaleString('nl-NL')}</div>
+        <div class="meta" style="margin-top:2px">${m.actiehouder_id ? `In behandeling bij: ${actiehouderNaam || '—'}` : 'Nog niet toegewezen'}</div>
+        ${magOverdragen && m.actiehouder_id ? `
+          <div class="row" style="gap:8px; margin-top:8px">
+            <select id="overdrachtNaar" style="flex:1"></select>
+            <button class="ghost" onclick="draagOver()">Overdragen</button>
+          </div>
+        ` : ''}
         ${locatieNaam || vestigingNaam ? `<div class="meta" style="margin-top:2px">📍 ${locatieNaam}${locatieNaam && vestigingNaam ? ' · ' : ''}${vestigingNaam}</div>` : ''}
         ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkFoto('${m.foto_pad}')">📷 Foto bekijken</button>` : ''}
       </div>
