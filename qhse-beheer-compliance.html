@@ -397,7 +397,28 @@
   }
 
   async function berekenMeldingTypenOverzicht(){
-    const { data: incidenten } = await supabaseClient.from('meldingen').select('classificatie_definitief, classificatie_melder').eq('type', 'Incident');
+    let incidentQuery = supabaseClient.from('meldingen').select('classificatie_definitief, classificatie_melder').eq('type', 'Incident');
+    let onveiligQuery = supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Onveilige situatie');
+    let verbeterQuery = supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Verbetervoorstel');
+
+    if(gekozenMeldingLocaties.size){
+      incidentQuery = incidentQuery.in('locatie_id', [...gekozenMeldingLocaties]);
+      onveiligQuery = onveiligQuery.in('locatie_id', [...gekozenMeldingLocaties]);
+      verbeterQuery = verbeterQuery.in('locatie_id', [...gekozenMeldingLocaties]);
+    } else if(gekozenMeldingVestigingen.size){
+      incidentQuery = incidentQuery.in('vestiging_id', [...gekozenMeldingVestigingen]);
+      onveiligQuery = onveiligQuery.in('vestiging_id', [...gekozenMeldingVestigingen]);
+      verbeterQuery = verbeterQuery.in('vestiging_id', [...gekozenMeldingVestigingen]);
+    } else if(gekozenMeldingRegios.size){
+      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenMeldingRegios]);
+      const vestIds = (vestInRegio||[]).map(v=>v.id);
+      const veiligeIds = vestIds.length ? vestIds : ['00000000-0000-0000-0000-000000000000'];
+      incidentQuery = incidentQuery.in('vestiging_id', veiligeIds);
+      onveiligQuery = onveiligQuery.in('vestiging_id', veiligeIds);
+      verbeterQuery = verbeterQuery.in('vestiging_id', veiligeIds);
+    }
+
+    const { data: incidenten } = await incidentQuery;
     const classificatieTelling = {};
     (incidenten||[]).forEach(m => {
       const klasse = m.classificatie_definitief || m.classificatie_melder || 'Nog niet geclassificeerd';
@@ -405,10 +426,51 @@
     });
     const classificaties = Object.entries(classificatieTelling).map(([naam, aantal]) => ({ naam, aantal })).sort((a,b) => b.aantal - a.aantal);
 
-    const { count: onveiligeSituaties } = await supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Onveilige situatie');
-    const { count: verbetervoorstellen } = await supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Verbetervoorstel');
+    const { count: onveiligeSituaties } = await onveiligQuery;
+    const { count: verbetervoorstellen } = await verbeterQuery;
 
     return { classificaties, onveiligeSituaties: onveiligeSituaties||0, verbetervoorstellen: verbetervoorstellen||0 };
+  }
+
+  let gekozenMeldingRegios = new Set();
+  let gekozenMeldingVestigingen = new Set();
+  let gekozenMeldingLocaties = new Set();
+
+  async function vulMeldingFilters(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    const rEl = document.getElementById('mRegioChips');
+    if(rEl) rEl.innerHTML = (regios||[]).map(r => `<span class="chip ${gekozenMeldingRegios.has(r.id)?'actief':''}" onclick="toggleMRegio('${r.id}')">${r.naam}</span>`).join('') || '<span class="meta">Nog geen regio\'s.</span>';
+    await vulMeldingVestigingChips();
+  }
+  async function vulMeldingVestigingChips(){
+    let query = supabaseClient.from('vestigingen').select('*').order('naam');
+    if(gekozenMeldingRegios.size) query = query.in('regio_id', [...gekozenMeldingRegios]);
+    const { data: vestigingen } = await query;
+    const vEl = document.getElementById('mVestigingChips');
+    if(vEl) vEl.innerHTML = (vestigingen||[]).map(v => `<span class="chip ${gekozenMeldingVestigingen.has(v.id)?'actief':''}" onclick="toggleMVestiging('${v.id}')">${v.naam}</span>`).join('') || '<span class="meta">Geen vestigingen.</span>';
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
+    const lEl = document.getElementById('mLocatieChips');
+    if(lEl) lEl.innerHTML = (locaties||[]).map(l => `<span class="chip ${gekozenMeldingLocaties.has(l.id)?'actief':''}" onclick="toggleMLocatie('${l.id}')">${l.naam}</span>`).join('') || '<span class="meta">Geen locaties/projecten.</span>';
+  }
+  async function toggleMRegio(id){
+    if(gekozenMeldingRegios.has(id)) gekozenMeldingRegios.delete(id); else gekozenMeldingRegios.add(id);
+    gekozenMeldingVestigingen.clear(); gekozenMeldingLocaties.clear();
+    await vulMeldingFilters();
+    await render();
+  }
+  async function toggleMVestiging(id){
+    if(gekozenMeldingVestigingen.has(id)) gekozenMeldingVestigingen.delete(id); else gekozenMeldingVestigingen.add(id);
+    gekozenMeldingLocaties.clear();
+    await vulMeldingVestigingChips();
+    await render();
+  }
+  async function toggleMLocatie(id){
+    if(gekozenMeldingLocaties.has(id)) gekozenMeldingLocaties.delete(id); else gekozenMeldingLocaties.add(id);
+    await vulMeldingVestigingChips();
+    await render();
+  }
+  function naarIncidentenMetFilter(classificatie){
+    window.location.href = 'qhse-beheer-incidenten.html?classificatie=' + encodeURIComponent(classificatie);
   }
 
   async function berekenActies(){
@@ -515,13 +577,20 @@
 
       <div class="card" style="margin-bottom:16px">
         <div class="eyebrow" style="margin-top:0">Verdeling per type melding</div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio's</label>
+        <div id="mRegioChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Vestigingen</label>
+        <div id="mVestigingChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Locatie/project</label>
+        <div id="mLocatieChips"></div>
+
         ${meldingTypen.classificaties.length ? `
-          <div style="margin-top:8px">
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
             ${meldingTypen.classificaties.map(c => {
               const maxAantal = Math.max(...meldingTypen.classificaties.map(x=>x.aantal));
               const breedte = Math.max(6, Math.round((c.aantal / maxAantal) * 100));
               return `
-                <div style="margin-bottom:8px">
+                <div class="klikbaar" style="margin-bottom:8px" onclick="naarIncidentenMetFilter('${c.naam.replace(/'/g,"\\'")}')">
                   <div class="row" style="margin-bottom:2px"><span style="font-size:12.5px">${c.naam}</span><span class="meta">${c.aantal}</span></div>
                   <div style="background:#eee; border-radius:6px; height:8px; overflow:hidden;">
                     <div style="background:var(--accent); height:100%; width:${breedte}%;"></div>
@@ -529,7 +598,7 @@
                 </div>`;
             }).join('')}
           </div>
-        ` : '<div class="meta" style="margin-top:8px">Nog geen incident-classificaties.</div>'}
+        ` : '<div class="meta" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">Nog geen incident-classificaties (met deze filters).</div>'}
         <div class="stat-rij" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);"><span>Gemelde onveilige situaties</span><span class="stat-getal">${meldingTypen.onveiligeSituaties}</span></div>
         <div class="stat-rij"><span>Gemelde verbetervoorstellen</span><span class="stat-getal">${meldingTypen.verbetervoorstellen}</span></div>
       </div>
@@ -555,6 +624,7 @@
       </div>
     `;
     await vulComplianceFilters();
+    await vulMeldingFilters();
   }
 
   function toonDetail(key, titel){

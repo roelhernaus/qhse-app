@@ -146,6 +146,9 @@
     }
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('app-scherm').classList.remove('verborgen');
+    const params = new URLSearchParams(window.location.search);
+    const klasseUitLink = params.get('classificatie');
+    if(klasseUitLink) filterKlasse = klasseUitLink;
     await render();
   }
 
