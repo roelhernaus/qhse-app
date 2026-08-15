@@ -250,9 +250,7 @@
     const { data: l, error } = await supabaseClient.from('locaties').select('*').eq('id', actieveLocatieId).single();
     if(error) return '<div class="fout">Kon locatie niet laden: ' + error.message + '</div>';
     const { data: vestigingenLijst } = await supabaseClient.from('vestigingen').select('id, naam').order('naam');
-    const { data: alleMedewerkers } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('in_dienst', true).order('achternaam');
-    const { data: gekoppeldeVerantwoordelijken } = await supabaseClient.from('locatie_verantwoordelijken').select('profiel_id').eq('locatie_id', l.id);
-    const verantwoordelijkeIds = new Set((gekoppeldeVerantwoordelijken||[]).map(v=>v.profiel_id));
+    const { data: gekoppeldeVerantwoordelijken } = await supabaseClient.from('locatie_verantwoordelijken').select('profiel_id, profielen(id, voornaam, achternaam, functie)').eq('locatie_id', l.id);
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
@@ -305,10 +303,18 @@
 
       <div class="eyebrow" style="margin-top:20px">Verantwoordelijke persoon/personen</div>
       <div class="card">
-        <div class="meta" style="margin-bottom:8px">Zij krijgen automatisch een leesnotificatie zodra hier een Incident of Onveilige situatie wordt gemeld — zonder de inhoud van de melding of wie de melder is.</div>
-        <div id="verantwoordelijkeChips">
-          ${(alleMedewerkers||[]).map(p => `<span class="chip ${verantwoordelijkeIds.has(p.id)?'actief':''}" onclick="toggleVerantwoordelijke('${l.id}','${p.id}')">${p.voornaam} ${p.achternaam}</span>`).join('') || '<span class="meta">Geen actieve medewerkers gevonden.</span>'}
+        <div class="meta" style="margin-bottom:10px">Zij krijgen automatisch een leesnotificatie zodra hier een Incident of Onveilige situatie wordt gemeld — zonder de inhoud van de melding of wie de melder is.</div>
+        <div id="verantwoordelijkeLijst">
+          ${(gekoppeldeVerantwoordelijken||[]).map(v => v.profielen ? `
+            <div class="row" style="padding:6px 0">
+              <span style="font-size:13px">${v.profielen.voornaam} ${v.profielen.achternaam}${v.profielen.functie ? ` <span class="meta">· ${v.profielen.functie}</span>` : ''}</span>
+              <button class="ghost" style="padding:4px 10px" onclick="verwijderVerantwoordelijke('${l.id}','${v.profiel_id}')">✕</button>
+            </div>
+          ` : '').join('') || '<div class="meta">Nog niemand gekoppeld.</div>'}
         </div>
+        <label style="margin-top:12px">Persoon toevoegen</label>
+        <input type="text" id="verantwZoek" placeholder="Typ een naam om te zoeken…" oninput="zoekVerantwoordelijke('${l.id}', this.value)" autocomplete="off">
+        <div id="verantwResultaten" style="position:relative;"></div>
       </div>
       <div class="eyebrow" style="margin-top:20px">Nu ingecheckt (${(checkins||[]).length})</div>
       ${rows}
@@ -400,15 +406,41 @@
     alert('Vestiging opgeslagen.');
   }
 
-  async function toggleVerantwoordelijke(locatieId, profielId){
-    const { data: bestaat } = await supabaseClient.from('locatie_verantwoordelijken').select('*').eq('locatie_id', locatieId).eq('profiel_id', profielId).maybeSingle();
-    if(bestaat){
-      const { error } = await supabaseClient.from('locatie_verantwoordelijken').delete().eq('locatie_id', locatieId).eq('profiel_id', profielId);
-      if(error){ alert('Mislukt: ' + error.message); return; }
-    } else {
-      const { error } = await supabaseClient.from('locatie_verantwoordelijken').insert({ locatie_id: locatieId, profiel_id: profielId });
-      if(error){ alert('Mislukt: ' + error.message); return; }
-    }
+  let verantwZoekTimer = null;
+  function zoekVerantwoordelijke(locatieId, tekst){
+    clearTimeout(verantwZoekTimer);
+    const resultatenEl = document.getElementById('verantwResultaten');
+    if(!tekst || tekst.trim().length < 2){ resultatenEl.innerHTML = ''; return; }
+    verantwZoekTimer = setTimeout(async () => {
+      const { data: bestaande } = await supabaseClient.from('locatie_verantwoordelijken').select('profiel_id').eq('locatie_id', locatieId);
+      const uitsluitIds = (bestaande||[]).map(b=>b.profiel_id);
+      let query = supabaseClient.from('profielen').select('id, voornaam, achternaam, functie')
+        .eq('in_dienst', true).or(`voornaam.ilike.%${tekst}%,achternaam.ilike.%${tekst}%`).order('achternaam').limit(8);
+      if(uitsluitIds.length) query = query.not('id', 'in', `(${uitsluitIds.join(',')})`);
+      const { data: gevonden } = await query;
+      resultatenEl.innerHTML = `
+        <div style="position:absolute; top:2px; left:0; right:0; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.08); z-index:10; max-height:220px; overflow-y:auto;">
+          ${(gevonden||[]).map(g => `
+            <div class="klikbaar" style="padding:9px 12px; font-size:13px;" onclick="voegVerantwoordelijkeToe('${locatieId}', '${g.id}')">
+              <b>${g.voornaam} ${g.achternaam}</b>${g.functie ? ` <span class="meta">· ${g.functie}</span>` : ''}
+            </div>
+          `).join('') || '<div class="meta" style="padding:9px 12px;">Niemand gevonden.</div>'}
+        </div>
+      `;
+    }, 250);
+  }
+
+  async function voegVerantwoordelijkeToe(locatieId, profielId){
+    const { error } = await supabaseClient.from('locatie_verantwoordelijken').insert({ locatie_id: locatieId, profiel_id: profielId });
+    if(error){ alert('Mislukt: ' + error.message); return; }
+    document.getElementById('verantwZoek').value = '';
+    document.getElementById('verantwResultaten').innerHTML = '';
+    await render();
+  }
+
+  async function verwijderVerantwoordelijke(locatieId, profielId){
+    const { error } = await supabaseClient.from('locatie_verantwoordelijken').delete().eq('locatie_id', locatieId).eq('profiel_id', profielId);
+    if(error){ alert('Mislukt: ' + error.message); return; }
     await render();
   }
 
