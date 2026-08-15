@@ -7,6 +7,7 @@
 <title>QHSE — Beheer Personeel</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
@@ -91,6 +92,7 @@
 <script>
   const SUPABASE_URL = "https://ijxyikkwufmmvpfksarx.supabase.co";
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
+  const APP_URL = "https://mijn.appvoorveiligheid.nl";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
 
@@ -165,6 +167,7 @@
     else if(scherm === 'soorten') inhoud.innerHTML = await renderAanwijzingSoorten();
     else if(scherm === 'nieuweAanwijzingSoort') inhoud.innerHTML = renderNieuweAanwijzingSoort();
     else if(scherm === 'uitnodigingen') inhoud.innerHTML = await renderUitnodigingen();
+    else if(scherm === 'bulkImport') inhoud.innerHTML = renderBulkImport();
   }
 
   let personeelSortering = 'achternaam';
@@ -191,6 +194,7 @@
       <div class="row" style="margin-bottom:12px">
         <span class="meta">${(profielen||[]).length} medewerkers</span>
         <button class="ghost" onclick="scherm='uitnodigingen'; render();">Uitnodigingen</button>
+        <button class="ghost" onclick="scherm='bulkImport'; render();">📥 Bulk importeren</button>
         <a href="qhse-beheer-vestigingen.html" style="text-decoration:none;"><button class="ghost">Regio's &amp; Vestigingen</button></a>
       </div>
       <div class="tabs" style="margin-bottom:14px">
@@ -679,6 +683,123 @@
   } else {
     document.getElementById('laad-scherm').style.display = 'none';
     document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  // ============================================================
+  // Bulk personeelsimport via Excel
+  // ============================================================
+  let bulkImportResultaten = null; // { rijen: [...], mislukt: [...] }
+
+  function renderBulkImport(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; render();">← Terug naar overzicht</button>
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Stap 1 — Sjabloon downloaden</div>
+        <div class="meta" style="margin-bottom:10px">Een lege Excel met de juiste kolommen. Voornaam en Achternaam zijn verplicht, de rest mag leeg blijven.</div>
+        <button class="ghost" onclick="downloadBulkSjabloon()">📄 Download leeg sjabloon</button>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="eyebrow" style="margin-top:0">Stap 2 — Ingevulde Excel uploaden</div>
+        <div class="meta" style="margin-bottom:10px">Per rij wordt een uitnodigingscode aangemaakt, met de gegevens al voorgevuld. De medewerker zelf kan bij het activeren alleen nog voornaam, achternaam en e-mailadres aanpassen — de rest staat vast zoals jij het aanlevert.</div>
+        <input type="file" id="bulkBestand" accept=".xlsx,.xls">
+        <button class="primary" style="margin-top:10px" onclick="verwerkBulkImport()">Verwerken</button>
+        <div class="meta" id="bulkStatus" style="margin-top:8px"></div>
+        <div class="fout verborgen" id="bulkFout"></div>
+      </div>
+
+      ${bulkImportResultaten ? `
+        <div class="card" style="margin-top:14px; background:var(--groen-dim, #d3f1e3);">
+          <div class="eyebrow" style="margin-top:0">Stap 3 — Klaar</div>
+          <div class="meta" style="margin-bottom:10px">${bulkImportResultaten.rijen.length} uitnodiging(en) aangemaakt${bulkImportResultaten.mislukt.length ? `, ${bulkImportResultaten.mislukt.length} rij(en) overgeslagen (zie hieronder)` : ''}.</div>
+          <button class="ghost" onclick="downloadBulkResultaten()">📄 Download resultaten (naam + code + link)</button>
+          <a href="Uitnodigingsmails-versturen.docx" download style="text-decoration:none;"><button class="ghost" style="margin-top:8px">📝 Download Word-sjabloon voor e-mails</button></a>
+          <div class="meta" style="margin-top:8px">Open het Word-sjabloon → volg de instructies erin → koppel het bestand dat je net downloadde → verstuur vanuit je eigen Outlook.</div>
+          ${bulkImportResultaten.mislukt.length ? `
+            <div class="meta" style="margin-top:12px; color:var(--red);">Overgeslagen rijen (voornaam of achternaam ontbrak):</div>
+            <div class="meta">${bulkImportResultaten.mislukt.map(m => `Rij ${m.rij}`).join(', ')}</div>
+          ` : ''}
+        </div>
+      ` : ''}
+    `;
+  }
+
+  function downloadBulkSjabloon(){
+    const ws = XLSX.utils.json_to_sheet([
+      { Voornaam: 'Jan', Achternaam: 'Jansen', 'E-mailadres (optioneel)': 'jan.jansen@voorbeeld.nl', 'Personeelsnummer (optioneel)': '', 'Functie (optioneel)': '', 'Rol (optioneel, standaard: medewerker)': '', 'Vestiging (optioneel, exacte naam)': '' }
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Personeel');
+    XLSX.writeFile(wb, 'personeel-import-sjabloon.xlsx');
+  }
+
+  function genereerUitnodigingsCode(){
+    const tekens = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for(let i=0; i<8; i++) code += tekens[Math.floor(Math.random()*tekens.length)];
+    return code.slice(0,4) + '-' + code.slice(4);
+  }
+
+  async function verwerkBulkImport(){
+    const input = document.getElementById('bulkBestand');
+    const statusEl = document.getElementById('bulkStatus');
+    const foutEl = document.getElementById('bulkFout');
+    foutEl.classList.add('verborgen');
+    if(!input.files[0]){ foutEl.textContent = 'Kies eerst een bestand.'; foutEl.classList.remove('verborgen'); return; }
+
+    statusEl.textContent = 'Bestand lezen…';
+    const data = await input.files[0].arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rijen = XLSX.utils.sheet_to_json(ws);
+
+    const { data: vestigingen } = await supabaseClient.from('vestigingen').select('id, naam').eq('organisatie_id', huidigProfiel.organisatie_id);
+    const vestigingMap = {};
+    (vestigingen||[]).forEach(v => { vestigingMap[v.naam.trim().toLowerCase()] = v.id; });
+    const geldigeRollen = ['medewerker','leidinggevende','kam','hr','admin','keurmeester','beheerder_kantoor'];
+
+    const aangemaakt = [];
+    const mislukt = [];
+
+    for(let i=0; i<rijen.length; i++){
+      const r = rijen[i];
+      const voornaam = (r['Voornaam']||'').toString().trim();
+      const achternaam = (r['Achternaam']||'').toString().trim();
+      if(!voornaam || !achternaam){ mislukt.push({ rij: i+2 }); continue; }
+
+      statusEl.textContent = `Verwerken… (${i+1}/${rijen.length})`;
+      const email = (r['E-mailadres (optioneel)']||'').toString().trim();
+      const personeelsnummer = (r['Personeelsnummer (optioneel)']||'').toString().trim() || null;
+      const functie = (r['Functie (optioneel)']||'').toString().trim() || null;
+      let rol = (r['Rol (optioneel, standaard: medewerker)']||'').toString().trim().toLowerCase();
+      if(!geldigeRollen.includes(rol)) rol = 'medewerker';
+      const vestigingNaam = (r['Vestiging (optioneel, exacte naam)']||'').toString().trim().toLowerCase();
+      const vestiging_id = vestigingMap[vestigingNaam] || null;
+
+      const code = genereerUitnodigingsCode();
+      const { error } = await supabaseClient.from('interne_uitnodigingen').insert({
+        organisatie_id: huidigProfiel.organisatie_id, code, rol, aangemaakt_door: huidigProfiel.id,
+        omschrijving: `Bulk-import: ${voornaam} ${achternaam}`,
+        voorgevuld_voornaam: voornaam, voorgevuld_achternaam: achternaam, voorgevuld_email: email || null,
+        voorgevuld_personeelsnummer: personeelsnummer, voorgevuld_functie: functie, voorgevuld_vestiging_id: vestiging_id
+      });
+      if(error){ mislukt.push({ rij: i+2, reden: error.message }); continue; }
+
+      aangemaakt.push({ voornaam, achternaam, email, code, link: `${APP_URL}/qhse-registreren.html?code=${code}` });
+    }
+
+    bulkImportResultaten = { rijen: aangemaakt, mislukt };
+    statusEl.textContent = '';
+    await render();
+  }
+
+  function downloadBulkResultaten(){
+    const ws = XLSX.utils.json_to_sheet(bulkImportResultaten.rijen.map(r => ({
+      Voornaam: r.voornaam, Achternaam: r.achternaam, 'E-mailadres': r.email, Code: r.code, Registratielink: r.link
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uitnodigingen');
+    XLSX.writeFile(wb, 'personeel-import-resultaten.xlsx');
   }
 </script>
 </body>

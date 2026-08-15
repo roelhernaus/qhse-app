@@ -38,7 +38,11 @@
 
   <div class="card" id="formulierKaart">
     <label>Uitnodigingscode</label>
-    <input type="text" id="regCode" placeholder="Van je leidinggevende of HR ontvangen" style="text-transform:uppercase">
+    <input type="text" id="regCode" placeholder="Van je leidinggevende of HR ontvangen" style="text-transform:uppercase" onblur="checkVoorvulling()">
+    <div id="voorvulBlok" class="verborgen" style="background:var(--accent-dim); border-radius:8px; padding:10px 12px; margin-top:10px; font-size:12.5px;">
+      <div style="font-weight:600; margin-bottom:4px;">Al bekend bij je werkgever (niet aanpasbaar):</div>
+      <div id="voorvulInhoud"></div>
+    </div>
     <label>Voornaam</label>
     <input type="text" id="regVoornaam">
     <label>Achternaam</label>
@@ -66,6 +70,38 @@
   const SUPABASE_KEY = "sb_publishable_j2TMYgukTXBMoBW1mv_w2w_3OUxsjBo";
   let supabaseClient = null;
   try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ console.error(e); }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const codeUitLink = params.get('code');
+    if(codeUitLink){
+      document.getElementById('regCode').value = codeUitLink.toUpperCase();
+      checkVoorvulling();
+    }
+  });
+
+  async function checkVoorvulling(){
+    const code = document.getElementById('regCode').value.trim().toUpperCase();
+    const blok = document.getElementById('voorvulBlok');
+    if(!code){ blok.classList.add('verborgen'); return; }
+    const { data, error } = await supabaseClient.rpc('haal_voorvulling_op', { p_code: code });
+    if(error || !data || !data.length){ blok.classList.add('verborgen'); return; }
+    const v = data[0];
+    if(!v.voornaam && !v.achternaam && !v.personeelsnummer && !v.functie && !v.vestiging_naam){
+      blok.classList.add('verborgen');
+      return;
+    }
+    if(v.voornaam) document.getElementById('regVoornaam').value = v.voornaam;
+    if(v.achternaam) document.getElementById('regAchternaam').value = v.achternaam;
+    if(v.email) document.getElementById('regEmail').value = v.email;
+    const regels = [];
+    if(v.personeelsnummer) regels.push(`Personeelsnummer: ${v.personeelsnummer}`);
+    if(v.functie) regels.push(`Functie: ${v.functie}`);
+    if(v.vestiging_naam) regels.push(`Vestiging: ${v.vestiging_naam}`);
+    if(v.rol) regels.push(`Rol: ${v.rol}`);
+    document.getElementById('voorvulInhoud').innerHTML = regels.map(r => `<div>${r}</div>`).join('');
+    blok.classList.remove('verborgen');
+  }
 
   async function registreer(){
     const code = document.getElementById('regCode').value.trim().toUpperCase();
