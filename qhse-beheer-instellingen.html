@@ -7,6 +7,7 @@
 <title>QHSE — Instellingen</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
@@ -135,6 +136,13 @@
       <option value="12">12 maanden</option>
     </select>
     <div class="meta" style="margin-top:6px">Geldt voor iedereen binnen de organisatie. Bij inloggen wordt gecontroleerd of iemands wachtwoord ouder is dan deze termijn — zo ja, dan moet diegene eerst een nieuw wachtwoord instellen.</div>
+  </div>
+
+  <div class="eyebrow">Data exporteren</div>
+  <div class="card">
+    <div class="meta" style="margin-bottom:10px">Eén Excel-bestand met een apart tabblad per onderdeel: personeel, meldingen, WPI/MBB-bezoeken, toolbox-sessies, opleidingspogingen, keuringen, stoffenregister en audittrail.</div>
+    <button class="primary" id="exportAllesKnop" onclick="exporteerAlles()">📊 Exporteer alles naar Excel</button>
+    <div class="meta" id="exportAllesStatus" style="margin-top:8px"></div>
   </div>
 
   <div class="eyebrow">Modules</div>
@@ -508,6 +516,111 @@
   } else {
     document.getElementById('laad-scherm').style.display = 'none';
     document.getElementById('login-scherm').classList.remove('verborgen');
+  }
+
+  // ============================================================
+  // Excel-export: alles in één bestand, per onderdeel een tabblad
+  // ============================================================
+  async function exporteerAlles(){
+    const knop = document.getElementById('exportAllesKnop');
+    const statusEl = document.getElementById('exportAllesStatus');
+    knop.disabled = true;
+    const orgId = huidigeOrganisatie.id;
+    const wb = XLSX.utils.book_new();
+
+    function zetTabblad(naam, rijen){
+      const ws = XLSX.utils.json_to_sheet(rijen.length ? rijen : [{ info: 'Geen data' }]);
+      XLSX.utils.book_append_sheet(wb, ws, naam.slice(0, 31));
+    }
+
+    statusEl.textContent = 'Personeel ophalen…';
+    const { data: personeel } = await supabaseClient.from('profielen')
+      .select('voornaam, achternaam, personeelsnummer, rol, functie, in_dienst, datum_in_dienst, datum_uit_dienst, vestigingen(naam)')
+      .eq('organisatie_id', orgId).order('achternaam');
+    zetTabblad('Personeel', (personeel||[]).map(p => ({
+      Voornaam: p.voornaam, Achternaam: p.achternaam, Personeelsnummer: p.personeelsnummer || '',
+      Rol: p.rol, Functie: p.functie || '', 'Account actief': p.in_dienst ? 'Ja' : 'Nee',
+      'Datum in dienst': p.datum_in_dienst || '', 'Datum uit dienst': p.datum_uit_dienst || '',
+      Vestiging: p.vestigingen ? p.vestigingen.naam : ''
+    })));
+
+    statusEl.textContent = 'Meldingen ophalen…';
+    const { data: meldingen } = await supabaseClient.from('meldingen_view')
+      .select('*, vestigingen(naam)').eq('organisatie_id', orgId).order('aangemaakt_op', { ascending:false });
+    zetTabblad('Meldingen', (meldingen||[]).map(m => ({
+      Type: m.type, Status: m.status, Anoniem: m.anoniem ? 'Ja' : 'Nee',
+      Omschrijving: m.omschrijving, Vestiging: m.vestigingen ? m.vestigingen.naam : '',
+      Aangemaakt: new Date(m.aangemaakt_op).toLocaleString('nl-NL')
+    })));
+
+    statusEl.textContent = 'WPI/MBB-bezoeken ophalen…';
+    const { data: bezoeken } = await supabaseClient.from('wpi_bezoeken')
+      .select('aangemaakt_op, afgerond, wpi_formulieren(naam, soort), profielen(voornaam, achternaam), vestigingen(naam), locaties(naam)')
+      .eq('organisatie_id', orgId).order('aangemaakt_op', { ascending:false });
+    zetTabblad('WPI en MBB bezoeken', (bezoeken||[]).map(b => ({
+      Soort: b.wpi_formulieren ? b.wpi_formulieren.soort.toUpperCase() : '',
+      Formulier: b.wpi_formulieren ? b.wpi_formulieren.naam : '',
+      Uitvoerder: b.profielen ? b.profielen.voornaam + ' ' + b.profielen.achternaam : '',
+      Vestiging: b.vestigingen ? b.vestigingen.naam : '', 'Locatie/project': b.locaties ? b.locaties.naam : '',
+      Afgerond: b.afgerond ? 'Ja' : 'Nee', Datum: new Date(b.aangemaakt_op).toLocaleString('nl-NL')
+    })));
+
+    statusEl.textContent = 'Toolbox-sessies ophalen…';
+    const { data: sessies } = await supabaseClient.from('toolbox_sessies')
+      .select('aangemaakt_op, toolbox_bibliotheek(naam), profielen(voornaam, achternaam)')
+      .eq('organisatie_id', orgId).order('aangemaakt_op', { ascending:false });
+    zetTabblad('Toolbox sessies', (sessies||[]).map(s => ({
+      Toolbox: s.toolbox_bibliotheek ? s.toolbox_bibliotheek.naam : '',
+      Gever: s.profielen ? s.profielen.voornaam + ' ' + s.profielen.achternaam : '',
+      Datum: new Date(s.aangemaakt_op).toLocaleString('nl-NL')
+    })));
+
+    statusEl.textContent = 'Opleidingspogingen ophalen…';
+    const { data: pogingenEcht } = await supabaseClient.from('opleiding_pogingen')
+      .select('geslaagd, score, afgerond_op, profielen!inner(voornaam, achternaam, organisatie_id), opleiding_versies(opleidingen(naam))')
+      .eq('profielen.organisatie_id', orgId).order('afgerond_op', { ascending:false });
+    zetTabblad('Opleidingspogingen', (pogingenEcht||[]).map(p => ({
+      Medewerker: p.profielen ? p.profielen.voornaam + ' ' + p.profielen.achternaam : '',
+      Opleiding: p.opleiding_versies && p.opleiding_versies.opleidingen ? p.opleiding_versies.opleidingen.naam : '',
+      Geslaagd: p.geslaagd ? 'Ja' : 'Nee', Score: p.score,
+      Datum: new Date(p.afgerond_op).toLocaleString('nl-NL')
+    })));
+
+    statusEl.textContent = 'Keuringen ophalen…';
+    const { data: arbeidsmiddelen } = await supabaseClient.from('arbeidsmiddelen')
+      .select('uniek_id, type, categorie, herkomst, keuringen(resultaat, volgende_keuring, aangemaakt_op)')
+      .eq('organisatie_id', orgId);
+    const keuringRijen = [];
+    (arbeidsmiddelen||[]).forEach(a => {
+      const laatste = (a.keuringen||[]).sort((x,y) => new Date(y.aangemaakt_op) - new Date(x.aangemaakt_op))[0];
+      keuringRijen.push({
+        'Uniek ID': a.uniek_id, Type: a.type || '', Categorie: a.categorie || '', Herkomst: a.herkomst,
+        'Laatste resultaat': laatste ? laatste.resultaat : 'Nog niet gekeurd',
+        'Volgende keuring': laatste ? laatste.volgende_keuring : ''
+      });
+    });
+    zetTabblad('Keuringen', keuringRijen);
+
+    statusEl.textContent = 'Stoffenregister ophalen…';
+    const { data: stoffen } = await supabaseClient.from('stoffen').select('naam, fabrikant, cas_nummer').eq('organisatie_id', orgId).order('naam');
+    zetTabblad('Stoffenregister', (stoffen||[]).map(s => ({ Naam: s.naam, Fabrikant: s.fabrikant || '', 'CAS-nummer': s.cas_nummer || '' })));
+
+    statusEl.textContent = 'Audittrail ophalen…';
+    const { data: audit } = await supabaseClient.from('audit_log')
+      .select('actie, tabel, omschrijving, aangemaakt_op, profielen(voornaam, achternaam)')
+      .eq('organisatie_id', orgId).order('aangemaakt_op', { ascending:false }).limit(2000);
+    zetTabblad('Audittrail', (audit||[]).map(l => ({
+      Actie: l.actie, Onderdeel: l.tabel, Omschrijving: l.omschrijving || '',
+      Door: l.profielen ? l.profielen.voornaam + ' ' + l.profielen.achternaam : 'onbekend',
+      Datum: new Date(l.aangemaakt_op).toLocaleString('nl-NL')
+    })));
+
+    statusEl.textContent = 'Bestand samenstellen…';
+    const bestandsnaam = `${huidigeOrganisatie.naam.replace(/[^a-z0-9]/gi,'_')}_export_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, bestandsnaam);
+
+    statusEl.textContent = '✓ Klaar — bestand gedownload.';
+    knop.disabled = false;
   }
 </script>
 </body>
