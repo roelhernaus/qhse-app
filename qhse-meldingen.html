@@ -31,6 +31,8 @@
   .tabs{ display:flex; gap:8px; margin-bottom:16px; }
   .tab{ padding:7px 14px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:12.5px; font-weight:600; cursor:pointer; }
   .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
   .badge{ background:var(--red); color:#fff; border-radius:10px; padding:1px 7px; font-size:10.5px; margin-left:5px; }
   .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:#eee; }
@@ -120,7 +122,7 @@
 
   <div id="filterBlok" class="card verborgen" style="margin-bottom:16px">
     <div class="eyebrow" style="margin-top:0">Filteren</div>
-    <div class="row" style="gap:10px; align-items:flex-end;">
+    <div class="row" style="gap:10px; margin-top:10px; align-items:flex-end;">
       <div style="flex:1">
         <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Van</label>
         <input type="date" id="filterDatumVan" onchange="ververs()">
@@ -130,17 +132,11 @@
         <input type="date" id="filterDatumTot" onchange="ververs()">
       </div>
     </div>
-    <div class="row" style="gap:10px; margin-top:10px; align-items:flex-end;">
-      <div style="flex:1">
-        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio</label>
-        <select id="filterRegio" onchange="filterRegioGewijzigd()"><option value="">Alle regio's</option></select>
-      </div>
-      <div style="flex:1">
-        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging</label>
-        <select id="filterVestiging" onchange="ververs()"><option value="">Alle vestigingen</option></select>
-      </div>
-    </div>
-    <button class="ghost" style="margin-top:10px" onclick="document.getElementById('filterDatumVan').value=''; document.getElementById('filterDatumTot').value=''; document.getElementById('filterRegio').value=''; document.getElementById('filterVestiging').value=''; ververs();">Filters wissen</button>
+    <label style="font-size:11.5px; font-weight:600; display:block; margin:12px 0 4px">Regio's (meerdere mogelijk, niets aangevinkt = alle)</label>
+    <div id="filterRegioChips"></div>
+    <label style="font-size:11.5px; font-weight:600; display:block; margin:12px 0 4px">Vestigingen (meerdere mogelijk, niets aangevinkt = alle)</label>
+    <div id="filterVestigingChips"></div>
+    <button class="ghost" style="margin-top:10px" onclick="wisFilters()">Filters wissen</button>
   </div>
 
   <div id="lijst"></div>
@@ -268,24 +264,45 @@
     await ververs();
   }
   let cachedOrgId = null;
+  let gekozenRegios = new Set();
+  let gekozenVestigingen = new Set();
+
   async function vulFilterDropdowns(){
     const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
-    const regioSelect = document.getElementById('filterRegio');
-    regioSelect.innerHTML = '<option value="">Alle regio\'s</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    document.getElementById('filterRegioChips').innerHTML = (regios||[]).map(r =>
+      `<span class="chip ${gekozenRegios.has(r.id)?'actief':''}" onclick="toggleRegioChip('${r.id}')">${r.naam}</span>`
+    ).join('') || '<span class="meta">Nog geen regio\'s aangemaakt.</span>';
     await vulVestigingDropdown();
   }
 
   async function vulVestigingDropdown(){
-    const regioId = document.getElementById('filterRegio').value;
     let query = supabaseClient.from('vestigingen').select('*').order('naam');
-    if(regioId) query = query.eq('regio_id', regioId);
+    if(gekozenRegios.size) query = query.in('regio_id', [...gekozenRegios]);
     const { data: vestigingen } = await query;
-    const vestigingSelect = document.getElementById('filterVestiging');
-    vestigingSelect.innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    document.getElementById('filterVestigingChips').innerHTML = (vestigingen||[]).map(v =>
+      `<span class="chip ${gekozenVestigingen.has(v.id)?'actief':''}" onclick="toggleVestigingChip('${v.id}')">${v.naam}</span>`
+    ).join('') || '<span class="meta">Geen vestigingen.</span>';
   }
 
-  async function filterRegioGewijzigd(){
+  async function toggleRegioChip(id){
+    if(gekozenRegios.has(id)) gekozenRegios.delete(id); else gekozenRegios.add(id);
+    gekozenVestigingen.clear(); // regio-keuze wijzigt de mogelijke vestigingen, dus reset die selectie
+    await vulFilterDropdowns();
+    await ververs();
+  }
+
+  async function toggleVestigingChip(id){
+    if(gekozenVestigingen.has(id)) gekozenVestigingen.delete(id); else gekozenVestigingen.add(id);
     await vulVestigingDropdown();
+    await ververs();
+  }
+
+  async function wisFilters(){
+    document.getElementById('filterDatumVan').value = '';
+    document.getElementById('filterDatumTot').value = '';
+    gekozenRegios.clear();
+    gekozenVestigingen.clear();
+    await vulFilterDropdowns();
     await ververs();
   }
 
@@ -336,14 +353,12 @@
     if(['admin','kam'].includes(huidigProfiel.rol)){
       const datumVan = document.getElementById('filterDatumVan').value;
       const datumTot = document.getElementById('filterDatumTot').value;
-      const vestigingId = document.getElementById('filterVestiging').value;
-      const regioId = document.getElementById('filterRegio').value;
       if(datumVan) query = query.gte('aangemaakt_op', datumVan);
       if(datumTot) query = query.lte('aangemaakt_op', datumTot + 'T23:59:59');
-      if(vestigingId){
-        query = query.eq('vestiging_id', vestigingId);
-      } else if(regioId){
-        const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').eq('regio_id', regioId);
+      if(gekozenVestigingen.size){
+        query = query.in('vestiging_id', [...gekozenVestigingen]);
+      } else if(gekozenRegios.size){
+        const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenRegios]);
         const ids = (vestInRegio||[]).map(v=>v.id);
         query = query.in('vestiging_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
       }

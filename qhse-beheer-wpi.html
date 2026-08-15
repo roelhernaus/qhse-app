@@ -38,6 +38,8 @@
   .tabs{ display:flex; gap:8px; margin-bottom:16px; }
   .tab{ padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
   .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
 </style>
 </head>
 <body>
@@ -421,31 +423,39 @@ KRITIEK SMG ONDERBOUWING: Staat de steiger er veilig bij?
 
   let actiefBezoekId = null;
 
-  let bezoekenFilterVestiging = '';
-  let bezoekenFilterRegio = '';
+  let gekozenBezRegios = new Set();
+  let gekozenBezVestigingen = new Set();
   let bezoekenFilterLocatie = '';
 
   async function vulBezoekenFilters(){
     const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
-    document.getElementById('bezRegio').innerHTML = '<option value="">Alle regio\'s</option>' + (regios||[]).map(r => `<option value="${r.id}" ${bezoekenFilterRegio===r.id?'selected':''}>${r.naam}</option>`).join('');
+    document.getElementById('bezRegioChips').innerHTML = (regios||[]).map(r =>
+      `<span class="chip ${gekozenBezRegios.has(r.id)?'actief':''}" onclick="toggleBezRegio('${r.id}')">${r.naam}</span>`
+    ).join('') || '<span class="meta">Nog geen regio\'s.</span>';
     await bezoekenVestigingVullen();
   }
   async function bezoekenVestigingVullen(){
-    const regioId = document.getElementById('bezRegio').value;
     let query = supabaseClient.from('vestigingen').select('*').order('naam');
-    if(regioId) query = query.eq('regio_id', regioId);
+    if(gekozenBezRegios.size) query = query.in('regio_id', [...gekozenBezRegios]);
     const { data: vestigingen } = await query;
-    document.getElementById('bezVestiging').innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}" ${bezoekenFilterVestiging===v.id?'selected':''}>${v.naam}</option>`).join('');
+    document.getElementById('bezVestigingChips').innerHTML = (vestigingen||[]).map(v =>
+      `<span class="chip ${gekozenBezVestigingen.has(v.id)?'actief':''}" onclick="toggleBezVestiging('${v.id}')">${v.naam}</span>`
+    ).join('') || '<span class="meta">Geen vestigingen.</span>';
     const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
     document.getElementById('bezLocatie').innerHTML = '<option value="">Alle locaties/projecten</option>' + (locaties||[]).map(l => `<option value="${l.id}" ${bezoekenFilterLocatie===l.id?'selected':''}>${l.naam}</option>`).join('');
   }
-  async function bezoekenRegioGewijzigd(){
+  async function toggleBezRegio(id){
+    if(gekozenBezRegios.has(id)) gekozenBezRegios.delete(id); else gekozenBezRegios.add(id);
+    gekozenBezVestigingen.clear();
+    await vulBezoekenFilters();
+    await render();
+  }
+  async function toggleBezVestiging(id){
+    if(gekozenBezVestigingen.has(id)) gekozenBezVestigingen.delete(id); else gekozenBezVestigingen.add(id);
     await bezoekenVestigingVullen();
-    await bezoekenFilterGewijzigd();
+    await render();
   }
   async function bezoekenFilterGewijzigd(){
-    bezoekenFilterRegio = document.getElementById('bezRegio').value;
-    bezoekenFilterVestiging = document.getElementById('bezVestiging').value;
     bezoekenFilterLocatie = document.getElementById('bezLocatie').value;
     await render();
   }
@@ -453,9 +463,9 @@ KRITIEK SMG ONDERBOUWING: Staat de steiger er veilig bij?
   async function renderBezoekenLijst(){
     let query = supabaseClient.from('wpi_bezoeken').select('*, wpi_formulieren(naam, soort), locaties(naam), vestigingen(naam)').eq('afgerond', true).order('aangemaakt_op', { ascending:false }).limit(50);
     if(bezoekenFilterLocatie) query = query.eq('locatie_id', bezoekenFilterLocatie);
-    else if(bezoekenFilterVestiging) query = query.eq('vestiging_id', bezoekenFilterVestiging);
-    else if(bezoekenFilterRegio){
-      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').eq('regio_id', bezoekenFilterRegio);
+    else if(gekozenBezVestigingen.size) query = query.in('vestiging_id', [...gekozenBezVestigingen]);
+    else if(gekozenBezRegios.size){
+      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenBezRegios]);
       const vestIds = (vestInRegio||[]).map(v=>v.id);
       query = query.in('vestiging_id', vestIds.length ? vestIds : ['00000000-0000-0000-0000-000000000000']);
     }
@@ -486,11 +496,12 @@ KRITIEK SMG ONDERBOUWING: Staat de steiger er veilig bij?
       ${renderHoofdTabs()}
       <div class="card" style="margin-bottom:16px">
         <div class="eyebrow" style="margin-top:0">Filteren</div>
-        <div class="row" style="gap:8px">
-          <select id="bezRegio" onchange="bezoekenRegioGewijzigd()" style="flex:1"><option value="">Alle regio's</option></select>
-          <select id="bezVestiging" onchange="bezoekenFilterGewijzigd()" style="flex:1"><option value="">Alle vestigingen</option></select>
-        </div>
-        <select id="bezLocatie" onchange="bezoekenFilterGewijzigd()" style="margin-top:8px"><option value="">Alle locaties/projecten</option></select>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio's (meerdere mogelijk)</label>
+        <div id="bezRegioChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Vestigingen (meerdere mogelijk)</label>
+        <div id="bezVestigingChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Locatie/project</label>
+        <select id="bezLocatie" onchange="bezoekenFilterGewijzigd()"><option value="">Alle locaties/projecten</option></select>
       </div>
       <div class="meta" style="margin-bottom:16px">Laatste 50 afgeronde WPI/MBB-bezoeken. Open een bezoek om alle antwoorden te bekijken en er eventueel een actie aan te koppelen.</div>
       ${rows}

@@ -30,6 +30,8 @@
   button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
   .donut-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px; margin-bottom:24px; }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
   .donut-kaart{ text-align:center; }
   .donut-titel{ font-family:'Oswald',sans-serif; font-weight:600; font-size:14px; margin-top:10px; }
   .donut-sub{ font-size:12px; color:var(--text-soft); margin-top:2px; }
@@ -156,7 +158,8 @@
   }
   function kleurVoor(p){ return p >= 80 ? 'var(--green)' : (p >= 50 ? 'var(--amber)' : 'var(--red)'); }
 
-  let filterVestigingId = '';
+  let gekozenRegios = new Set();
+  let gekozenVestigingen = new Set();
   let filterLeidinggevendeId = '';
   let filterInclusiefLeiding = false;
 
@@ -168,9 +171,14 @@
     return query.eq('leidinggevende_id', filterLeidinggevendeId);
   }
 
+  function pasVestigingFilterToe(q){
+    if(gekozenVestigingen.size) return q.in('vestiging_id', [...gekozenVestigingen]);
+    return q;
+  }
+
   async function iedereenInDienst(){
     let q = supabaseClient.from('profielen').select('id').eq('in_dienst', true);
-    if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
+    q = pasVestigingFilterToe(q);
     q = pasLeidinggevendeFilterToe(q);
     const { data } = await q;
     return (data||[]).map(p=>p.id);
@@ -178,9 +186,9 @@
   async function ledenVanGroep(groepId){
     const { data } = await supabaseClient.from('groep_leden').select('profiel_id').eq('groep_id', groepId);
     let ids = (data||[]).map(l=>l.profiel_id);
-    if((filterVestigingId || filterLeidinggevendeId) && ids.length){
+    if((gekozenVestigingen.size || filterLeidinggevendeId) && ids.length){
       let q = supabaseClient.from('profielen').select('id').in('id', ids);
-      if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
+      q = pasVestigingFilterToe(q);
       q = pasLeidinggevendeFilterToe(q);
       const { data: gefilterd } = await q;
       ids = (gefilterd||[]).map(p=>p.id);
@@ -222,7 +230,7 @@
     let profielenQuery = supabaseClient.from('profielen')
       .select('id, voornaam, achternaam, personeelsnummer, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override')
       .eq('in_dienst', true);
-    if(filterVestigingId) profielenQuery = profielenQuery.eq('vestiging_id', filterVestigingId);
+    profielenQuery = pasVestigingFilterToe(profielenQuery);
     profielenQuery = pasLeidinggevendeFilterToe(profielenQuery);
     if(soort === 'mbb'){
       const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
@@ -373,16 +381,37 @@
   let laatsteData = {};
 
   async function vulComplianceFilters(){
-    const { data: vestigingen } = await supabaseClient.from('vestigingen').select('*').order('naam');
-    const vSelect = document.getElementById('cVestiging');
-    if(vSelect) vSelect.innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}" ${filterVestigingId===v.id?'selected':''}>${v.naam}</option>`).join('');
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    const rEl = document.getElementById('cRegioChips');
+    if(rEl) rEl.innerHTML = (regios||[]).map(r => `<span class="chip ${gekozenRegios.has(r.id)?'actief':''}" onclick="toggleCRegio('${r.id}')">${r.naam}</span>`).join('') || '<span class="meta">Nog geen regio\'s.</span>';
+    await vulComplianceVestigingChips();
     const { data: leidinggevenden } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('is_leidinggevende', true).eq('in_dienst', true).order('achternaam');
     const lSelect = document.getElementById('cLeidinggevende');
     if(lSelect) lSelect.innerHTML = '<option value="">Alle leidinggevenden</option>' + (leidinggevenden||[]).map(p => `<option value="${p.id}" ${filterLeidinggevendeId===p.id?'selected':''}>${p.voornaam} ${p.achternaam}</option>`).join('');
   }
 
+  async function vulComplianceVestigingChips(){
+    let query = supabaseClient.from('vestigingen').select('*').order('naam');
+    if(gekozenRegios.size) query = query.in('regio_id', [...gekozenRegios]);
+    const { data: vestigingen } = await query;
+    const vEl = document.getElementById('cVestigingChips');
+    if(vEl) vEl.innerHTML = (vestigingen||[]).map(v => `<span class="chip ${gekozenVestigingen.has(v.id)?'actief':''}" onclick="toggleCVestiging('${v.id}')">${v.naam}</span>`).join('') || '<span class="meta">Geen vestigingen.</span>';
+  }
+
+  async function toggleCRegio(id){
+    if(gekozenRegios.has(id)) gekozenRegios.delete(id); else gekozenRegios.add(id);
+    gekozenVestigingen.clear();
+    await vulComplianceFilters();
+    await render();
+  }
+
+  async function toggleCVestiging(id){
+    if(gekozenVestigingen.has(id)) gekozenVestigingen.delete(id); else gekozenVestigingen.add(id);
+    await vulComplianceVestigingChips();
+    await render();
+  }
+
   function filterGewijzigd(){
-    filterVestigingId = document.getElementById('cVestiging').value;
     filterLeidinggevendeId = document.getElementById('cLeidinggevende').value;
     filterInclusiefLeiding = document.getElementById('cInclusiefLeiding').checked;
     render();
@@ -406,19 +435,15 @@
     inhoud.innerHTML = `
       <div class="card" style="margin-bottom:16px">
         <div class="eyebrow" style="margin-top:0">Filteren (WPI, MBB, Toolboxen, Opleidingen)</div>
-        <div class="row" style="gap:10px; align-items:flex-end;">
-          <div style="flex:1">
-            <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging</label>
-            <select id="cVestiging" onchange="filterGewijzigd()"><option value="">Alle vestigingen</option></select>
-          </div>
-          <div style="flex:1">
-            <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Leidinggevende</label>
-            <select id="cLeidinggevende" onchange="filterGewijzigd()"><option value="">Alle leidinggevenden</option></select>
-            <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-weight:400;">
-              <input type="checkbox" id="cInclusiefLeiding" style="width:auto" ${filterInclusiefLeiding?'checked':''} onchange="filterGewijzigd()"> Inclusief de leidinggevende zelf
-            </label>
-          </div>
-        </div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio's (meerdere mogelijk, niets aangevinkt = alle)</label>
+        <div id="cRegioChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Vestigingen (meerdere mogelijk, niets aangevinkt = alle)</label>
+        <div id="cVestigingChips"></div>
+        <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Leidinggevende</label>
+        <select id="cLeidinggevende" onchange="filterGewijzigd()"><option value="">Alle leidinggevenden</option></select>
+        <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-weight:400;">
+          <input type="checkbox" id="cInclusiefLeiding" style="width:auto" ${filterInclusiefLeiding?'checked':''} onchange="filterGewijzigd()"> Inclusief de leidinggevende zelf
+        </label>
       </div>
 
       <div class="donut-grid">
@@ -427,7 +452,7 @@
             ${donutSvg(d.data.percentage, kleurVoor(d.data.percentage))}
             <div class="donut-titel">${d.titel}</div>
             <div class="donut-sub">${d.sub}</div>
-            <div class="meta" style="margin-top:4px; color:var(--accent)">Bekijk per persoon →</div>
+            <div class="meta" style="margin-top:4px; color:var(--accent)">Bekijk per ${d.key==='keuringen'?'arbeidsmiddel':'persoon'} →</div>
           </div>
         `).join('')}
       </div>

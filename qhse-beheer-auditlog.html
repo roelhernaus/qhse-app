@@ -23,6 +23,8 @@
   .tabs{ display:flex; gap:8px; margin-bottom:16px; }
   .tab{ padding:7px 14px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:12.5px; font-weight:600; cursor:pointer; }
   .tab.actief{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
   button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
   button.ghost{ background:transparent; }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:8px; }
@@ -92,17 +94,12 @@
       <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Tot</label>
       <input type="date" id="datumTot" onchange="render()">
     </div>
-    <button class="ghost" onclick="document.getElementById('datumVan').value=''; document.getElementById('datumTot').value=''; document.getElementById('auditRegio').value=''; document.getElementById('auditVestiging').value=''; render();">Wissen</button>
+    <button class="ghost" onclick="wisAuditFilters()">Wissen</button>
   </div>
-  <div class="row" style="gap:10px; margin-bottom:16px; align-items:flex-end;">
-    <div style="flex:1">
-      <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio (van de uitvoerder)</label>
-      <select id="auditRegio" onchange="auditRegioGewijzigd()"><option value="">Alle regio's</option></select>
-    </div>
-    <div style="flex:1">
-      <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging (van de uitvoerder)</label>
-      <select id="auditVestiging" onchange="render()"><option value="">Alle vestigingen</option></select>
-    </div>
+  <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio's van de uitvoerder (meerdere mogelijk)</label>
+  <div id="auditRegioChips" style="margin-bottom:10px"></div>
+  <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestigingen van de uitvoerder (meerdere mogelijk)</label>
+  <div id="auditVestigingChips" style="margin-bottom:16px"></div>
   </div>
   <div id="inhoud"></div>
 </div>
@@ -186,22 +183,45 @@
     render();
   }
 
+  let gekozenRegios = new Set();
+  let gekozenVestigingen = new Set();
+
   async function vulAuditFilters(){
     const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
-    document.getElementById('auditRegio').innerHTML = '<option value="">Alle regio\'s</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    document.getElementById('auditRegioChips').innerHTML = (regios||[]).map(r =>
+      `<span class="chip ${gekozenRegios.has(r.id)?'actief':''}" onclick="toggleAuditRegio('${r.id}')">${r.naam}</span>`
+    ).join('') || '<span class="meta">Nog geen regio\'s.</span>';
     await auditVestigingVullen();
   }
 
   async function auditVestigingVullen(){
-    const regioId = document.getElementById('auditRegio').value;
     let query = supabaseClient.from('vestigingen').select('*').order('naam');
-    if(regioId) query = query.eq('regio_id', regioId);
+    if(gekozenRegios.size) query = query.in('regio_id', [...gekozenRegios]);
     const { data: vestigingen } = await query;
-    document.getElementById('auditVestiging').innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    document.getElementById('auditVestigingChips').innerHTML = (vestigingen||[]).map(v =>
+      `<span class="chip ${gekozenVestigingen.has(v.id)?'actief':''}" onclick="toggleAuditVestiging('${v.id}')">${v.naam}</span>`
+    ).join('') || '<span class="meta">Geen vestigingen.</span>';
   }
 
-  async function auditRegioGewijzigd(){
+  async function toggleAuditRegio(id){
+    if(gekozenRegios.has(id)) gekozenRegios.delete(id); else gekozenRegios.add(id);
+    gekozenVestigingen.clear();
+    await vulAuditFilters();
+    await render();
+  }
+
+  async function toggleAuditVestiging(id){
+    if(gekozenVestigingen.has(id)) gekozenVestigingen.delete(id); else gekozenVestigingen.add(id);
     await auditVestigingVullen();
+    await render();
+  }
+
+  async function wisAuditFilters(){
+    document.getElementById('datumVan').value = '';
+    document.getElementById('datumTot').value = '';
+    gekozenRegios.clear();
+    gekozenVestigingen.clear();
+    await vulAuditFilters();
     await render();
   }
 
@@ -214,14 +234,12 @@
     if(datumVan) query = query.gte('aangemaakt_op', datumVan + 'T00:00:00');
     if(datumTot) query = query.lte('aangemaakt_op', datumTot + 'T23:59:59');
 
-    const vestigingId = document.getElementById('auditVestiging') ? document.getElementById('auditVestiging').value : '';
-    const regioId = document.getElementById('auditRegio') ? document.getElementById('auditRegio').value : '';
     let gebruikerFilterIds = null;
-    if(vestigingId){
-      const { data: mensen } = await supabaseClient.from('profielen').select('id').eq('vestiging_id', vestigingId);
+    if(gekozenVestigingen.size){
+      const { data: mensen } = await supabaseClient.from('profielen').select('id').in('vestiging_id', [...gekozenVestigingen]);
       gebruikerFilterIds = (mensen||[]).map(m=>m.id);
-    } else if(regioId){
-      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').eq('regio_id', regioId);
+    } else if(gekozenRegios.size){
+      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenRegios]);
       const vestIds = (vestInRegio||[]).map(v=>v.id);
       const { data: mensen } = await supabaseClient.from('profielen').select('id').in('vestiging_id', vestIds.length ? vestIds : ['00000000-0000-0000-0000-000000000000']);
       gebruikerFilterIds = (mensen||[]).map(m=>m.id);
