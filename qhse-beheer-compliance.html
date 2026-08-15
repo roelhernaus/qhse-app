@@ -396,6 +396,21 @@
     };
   }
 
+  async function berekenMeldingTypenOverzicht(){
+    const { data: incidenten } = await supabaseClient.from('meldingen').select('classificatie_definitief, classificatie_melder').eq('type', 'Incident');
+    const classificatieTelling = {};
+    (incidenten||[]).forEach(m => {
+      const klasse = m.classificatie_definitief || m.classificatie_melder || 'Nog niet geclassificeerd';
+      classificatieTelling[klasse] = (classificatieTelling[klasse] || 0) + 1;
+    });
+    const classificaties = Object.entries(classificatieTelling).map(([naam, aantal]) => ({ naam, aantal })).sort((a,b) => b.aantal - a.aantal);
+
+    const { count: onveiligeSituaties } = await supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Onveilige situatie');
+    const { count: verbetervoorstellen } = await supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Verbetervoorstel');
+
+    return { classificaties, onveiligeSituaties: onveiligeSituaties||0, verbetervoorstellen: verbetervoorstellen||0 };
+  }
+
   async function berekenActies(){
     const { data: meldingen } = await supabaseClient.from('meldingen').select('status');
     const openMeldingen = (meldingen||[]).filter(m=>m.status!=='Afgehandeld').length;
@@ -454,8 +469,8 @@
 
   async function render(){
     const inhoud = document.getElementById('inhoud');
-    const [wpi, mbb, toolboxen, opleidingen, keuringen, acties, incidentenStatus] = await Promise.all([
-      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies(), berekenIncidentenPerStatus()
+    const [wpi, mbb, toolboxen, opleidingen, keuringen, acties, incidentenStatus, meldingTypen] = await Promise.all([
+      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies(), berekenIncidentenPerStatus(), berekenMeldingTypenOverzicht()
     ]);
     laatsteData = { wpi, mbb, toolboxen, opleidingen, keuringen };
 
@@ -496,6 +511,27 @@
             <div class="meta" style="margin-top:8px; color:var(--accent);">Naar Incidenten-omgeving →</div>
           </div>
         </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="eyebrow" style="margin-top:0">Verdeling per type melding</div>
+        ${meldingTypen.classificaties.length ? `
+          <div style="margin-top:8px">
+            ${meldingTypen.classificaties.map(c => {
+              const maxAantal = Math.max(...meldingTypen.classificaties.map(x=>x.aantal));
+              const breedte = Math.max(6, Math.round((c.aantal / maxAantal) * 100));
+              return `
+                <div style="margin-bottom:8px">
+                  <div class="row" style="margin-bottom:2px"><span style="font-size:12.5px">${c.naam}</span><span class="meta">${c.aantal}</span></div>
+                  <div style="background:#eee; border-radius:6px; height:8px; overflow:hidden;">
+                    <div style="background:var(--accent); height:100%; width:${breedte}%;"></div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        ` : '<div class="meta" style="margin-top:8px">Nog geen incident-classificaties.</div>'}
+        <div class="stat-rij" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);"><span>Gemelde onveilige situaties</span><span class="stat-getal">${meldingTypen.onveiligeSituaties}</span></div>
+        <div class="stat-rij"><span>Gemelde verbetervoorstellen</span><span class="stat-getal">${meldingTypen.verbetervoorstellen}</span></div>
       </div>
 
       <div class="donut-grid">
