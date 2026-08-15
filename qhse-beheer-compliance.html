@@ -158,11 +158,20 @@
 
   let filterVestigingId = '';
   let filterLeidinggevendeId = '';
+  let filterInclusiefLeiding = false;
+
+  function pasLeidinggevendeFilterToe(query){
+    if(!filterLeidinggevendeId) return query;
+    if(filterInclusiefLeiding){
+      return query.or(`leidinggevende_id.eq.${filterLeidinggevendeId},id.eq.${filterLeidinggevendeId}`);
+    }
+    return query.eq('leidinggevende_id', filterLeidinggevendeId);
+  }
 
   async function iedereenInDienst(){
     let q = supabaseClient.from('profielen').select('id').eq('in_dienst', true);
     if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
-    if(filterLeidinggevendeId) q = q.eq('leidinggevende_id', filterLeidinggevendeId);
+    q = pasLeidinggevendeFilterToe(q);
     const { data } = await q;
     return (data||[]).map(p=>p.id);
   }
@@ -172,7 +181,7 @@
     if((filterVestigingId || filterLeidinggevendeId) && ids.length){
       let q = supabaseClient.from('profielen').select('id').in('id', ids);
       if(filterVestigingId) q = q.eq('vestiging_id', filterVestigingId);
-      if(filterLeidinggevendeId) q = q.eq('leidinggevende_id', filterLeidinggevendeId);
+      q = pasLeidinggevendeFilterToe(q);
       const { data: gefilterd } = await q;
       ids = (gefilterd||[]).map(p=>p.id);
     }
@@ -214,7 +223,7 @@
       .select('id, voornaam, achternaam, personeelsnummer, datum_in_dienst, datum_uit_dienst, wpi_streefaantal_override, mbb_streefaantal_override')
       .eq('in_dienst', true);
     if(filterVestigingId) profielenQuery = profielenQuery.eq('vestiging_id', filterVestigingId);
-    if(filterLeidinggevendeId) profielenQuery = profielenQuery.eq('leidinggevende_id', filterLeidinggevendeId);
+    profielenQuery = pasLeidinggevendeFilterToe(profielenQuery);
     if(soort === 'mbb'){
       const { data: mgmtGroep } = await supabaseClient.from('groepen').select('id').eq('naam','Management').maybeSingle();
       if(!mgmtGroep) return { percentage:0, teller:0, noemer:0, detail:[] };
@@ -375,6 +384,7 @@
   function filterGewijzigd(){
     filterVestigingId = document.getElementById('cVestiging').value;
     filterLeidinggevendeId = document.getElementById('cLeidinggevende').value;
+    filterInclusiefLeiding = document.getElementById('cInclusiefLeiding').checked;
     render();
   }
 
@@ -404,6 +414,9 @@
           <div style="flex:1">
             <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Leidinggevende</label>
             <select id="cLeidinggevende" onchange="filterGewijzigd()"><option value="">Alle leidinggevenden</option></select>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-weight:400;">
+              <input type="checkbox" id="cInclusiefLeiding" style="width:auto" ${filterInclusiefLeiding?'checked':''} onchange="filterGewijzigd()"> Inclusief de leidinggevende zelf
+            </label>
           </div>
         </div>
       </div>

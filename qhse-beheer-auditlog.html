@@ -92,7 +92,17 @@
       <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Tot</label>
       <input type="date" id="datumTot" onchange="render()">
     </div>
-    <button class="ghost" onclick="document.getElementById('datumVan').value=''; document.getElementById('datumTot').value=''; render();">Wissen</button>
+    <button class="ghost" onclick="document.getElementById('datumVan').value=''; document.getElementById('datumTot').value=''; document.getElementById('auditRegio').value=''; document.getElementById('auditVestiging').value=''; render();">Wissen</button>
+  </div>
+  <div class="row" style="gap:10px; margin-bottom:16px; align-items:flex-end;">
+    <div style="flex:1">
+      <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Regio (van de uitvoerder)</label>
+      <select id="auditRegio" onchange="auditRegioGewijzigd()"><option value="">Alle regio's</option></select>
+    </div>
+    <div style="flex:1">
+      <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px">Vestiging (van de uitvoerder)</label>
+      <select id="auditVestiging" onchange="render()"><option value="">Alle vestigingen</option></select>
+    </div>
   </div>
   <div id="inhoud"></div>
 </div>
@@ -164,6 +174,7 @@
     }
     document.getElementById('wieBenIk').textContent = profiel.voornaam + ' ' + profiel.achternaam + ' · ' + profiel.rol;
     document.getElementById('app-scherm').classList.remove('verborgen');
+    await vulAuditFilters();
     await render();
   }
 
@@ -175,14 +186,48 @@
     render();
   }
 
+  async function vulAuditFilters(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').order('naam');
+    document.getElementById('auditRegio').innerHTML = '<option value="">Alle regio\'s</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    await auditVestigingVullen();
+  }
+
+  async function auditVestigingVullen(){
+    const regioId = document.getElementById('auditRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    document.getElementById('auditVestiging').innerHTML = '<option value="">Alle vestigingen</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+  }
+
+  async function auditRegioGewijzigd(){
+    await auditVestigingVullen();
+    await render();
+  }
+
   async function render(){
     const inhoud = document.getElementById('inhoud');
-    let query = supabaseClient.from('audit_log').select('*, profielen(voornaam, achternaam)').order('aangemaakt_op', { ascending:false }).limit(200);
+    let query = supabaseClient.from('audit_log').select('*, profielen(voornaam, achternaam, vestiging_id)').order('aangemaakt_op', { ascending:false }).limit(200);
     if(filter) query = query.eq('actie', filter);
     const datumVan = document.getElementById('datumVan').value;
     const datumTot = document.getElementById('datumTot').value;
     if(datumVan) query = query.gte('aangemaakt_op', datumVan + 'T00:00:00');
     if(datumTot) query = query.lte('aangemaakt_op', datumTot + 'T23:59:59');
+
+    const vestigingId = document.getElementById('auditVestiging') ? document.getElementById('auditVestiging').value : '';
+    const regioId = document.getElementById('auditRegio') ? document.getElementById('auditRegio').value : '';
+    let gebruikerFilterIds = null;
+    if(vestigingId){
+      const { data: mensen } = await supabaseClient.from('profielen').select('id').eq('vestiging_id', vestigingId);
+      gebruikerFilterIds = (mensen||[]).map(m=>m.id);
+    } else if(regioId){
+      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').eq('regio_id', regioId);
+      const vestIds = (vestInRegio||[]).map(v=>v.id);
+      const { data: mensen } = await supabaseClient.from('profielen').select('id').in('vestiging_id', vestIds.length ? vestIds : ['00000000-0000-0000-0000-000000000000']);
+      gebruikerFilterIds = (mensen||[]).map(m=>m.id);
+    }
+    if(gebruikerFilterIds) query = query.in('gebruiker_id', gebruikerFilterIds.length ? gebruikerFilterIds : ['00000000-0000-0000-0000-000000000000']);
+
     const { data: logs, error } = await query;
     if(error){ inhoud.innerHTML = '<div class="fout">Kon audittrail niet laden: ' + error.message + '</div>'; return; }
 
