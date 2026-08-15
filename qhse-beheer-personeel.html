@@ -716,8 +716,12 @@
           <a href="Uitnodigingsmails-versturen.docx" download style="text-decoration:none;"><button class="ghost" style="margin-top:8px">📝 Download Word-sjabloon voor e-mails</button></a>
           <div class="meta" style="margin-top:8px">Open het Word-sjabloon → volg de instructies erin → koppel het bestand dat je net downloadde → verstuur vanuit je eigen Outlook.</div>
           ${bulkImportResultaten.mislukt.length ? `
-            <div class="meta" style="margin-top:12px; color:var(--red);">Overgeslagen rijen (voornaam of achternaam ontbrak):</div>
-            <div class="meta">${bulkImportResultaten.mislukt.map(m => `Rij ${m.rij}`).join(', ')}</div>
+            <div class="meta" style="margin-top:12px; color:var(--red); font-weight:600;">Overgeslagen rijen:</div>
+            ${bulkImportResultaten.mislukt.map(m => `<div class="meta" style="color:var(--red)">Rij ${m.rij}${m.reden ? ': ' + m.reden : ''}</div>`).join('')}
+          ` : ''}
+          ${bulkImportResultaten.waarschuwingen.length ? `
+            <div class="meta" style="margin-top:12px; color:var(--amber, #b57a10); font-weight:600;">Ter controle (wél aangemaakt, maar check dit even):</div>
+            ${bulkImportResultaten.waarschuwingen.map(w => `<div class="meta" style="color:var(--amber, #b57a10)">Rij ${w.rij}: ${w.tekst}</div>`).join('')}
           ` : ''}
         </div>
       ` : ''}
@@ -758,23 +762,60 @@
     (vestigingen||[]).forEach(v => { vestigingMap[v.naam.trim().toLowerCase()] = v.id; });
     const geldigeRollen = ['medewerker','leidinggevende','kam','hr','admin','keurmeester','beheerder_kantoor'];
 
+    // ---- Bestaand personeel en al openstaande, nog niet gebruikte uitnodigingen ophalen, voor de dubbelingscontrole ----
+    statusEl.textContent = 'Controleren op dubbelingen…';
+    const { data: bestaandPersoneel } = await supabaseClient.from('profielen')
+      .select('voornaam, achternaam, personeelsnummer').eq('organisatie_id', huidigProfiel.organisatie_id);
+    const { data: openstaandeUitnodigingen } = await supabaseClient.from('interne_uitnodigingen')
+      .select('voorgevuld_voornaam, voorgevuld_achternaam, voorgevuld_personeelsnummer').eq('organisatie_id', huidigProfiel.organisatie_id).eq('gebruikt', false);
+
+    const bestaandePersoneelsnummers = new Set((bestaandPersoneel||[]).map(p => (p.personeelsnummer||'').trim().toLowerCase()).filter(Boolean));
+    const bestaandeNamen = new Set((bestaandPersoneel||[]).map(p => (p.voornaam+' '+p.achternaam).trim().toLowerCase()));
+    const openstaandePersoneelsnummers = new Set((openstaandeUitnodigingen||[]).map(u => (u.voorgevuld_personeelsnummer||'').trim().toLowerCase()).filter(Boolean));
+    const openstaandeNamen = new Set((openstaandeUitnodigingen||[]).map(u => (u.voorgevuld_voornaam+' '+u.voorgevuld_achternaam).trim().toLowerCase()));
+
     const aangemaakt = [];
     const mislukt = [];
+    const waarschuwingen = [];
+    const personeelsnummersInDezeUpload = new Set();
 
     for(let i=0; i<rijen.length; i++){
       const r = rijen[i];
       const voornaam = (r['Voornaam']||'').toString().trim();
       const achternaam = (r['Achternaam']||'').toString().trim();
-      if(!voornaam || !achternaam){ mislukt.push({ rij: i+2 }); continue; }
+      if(!voornaam || !achternaam){ mislukt.push({ rij: i+2, reden: 'Voornaam of achternaam ontbreekt' }); continue; }
 
       statusEl.textContent = `Verwerken… (${i+1}/${rijen.length})`;
       const email = (r['E-mailadres (optioneel)']||'').toString().trim();
       const personeelsnummer = (r['Personeelsnummer (optioneel)']||'').toString().trim() || null;
+      const personeelsnummerKey = (personeelsnummer||'').toLowerCase();
+      const naamKey = (voornaam+' '+achternaam).toLowerCase();
       const functie = (r['Functie (optioneel)']||'').toString().trim() || null;
       let rol = (r['Rol (optioneel, standaard: medewerker)']||'').toString().trim().toLowerCase();
       if(!geldigeRollen.includes(rol)) rol = 'medewerker';
       const vestigingNaam = (r['Vestiging (optioneel, exacte naam)']||'').toString().trim().toLowerCase();
       const vestiging_id = vestigingMap[vestigingNaam] || null;
+
+      // ---- Harde blokkade: dubbel personeelsnummer ----
+      if(personeelsnummer){
+        if(personeelsnummersInDezeUpload.has(personeelsnummerKey)){
+          mislukt.push({ rij: i+2, reden: `Personeelsnummer "${personeelsnummer}" komt dubbel voor in deze upload` }); continue;
+        }
+        if(bestaandePersoneelsnummers.has(personeelsnummerKey)){
+          mislukt.push({ rij: i+2, reden: `Personeelsnummer "${personeelsnummer}" bestaat al bij een actief personeelslid` }); continue;
+        }
+        if(openstaandePersoneelsnummers.has(personeelsnummerKey)){
+          mislukt.push({ rij: i+2, reden: `Personeelsnummer "${personeelsnummer}" heeft al een openstaande, nog niet gebruikte uitnodiging` }); continue;
+        }
+        personeelsnummersInDezeUpload.add(personeelsnummerKey);
+      }
+
+      // ---- Zachte waarschuwing: gelijke naam (kan legitiem zijn, dus geen blokkade) ----
+      if(bestaandeNamen.has(naamKey)){
+        waarschuwingen.push({ rij: i+2, tekst: `"${voornaam} ${achternaam}" komt al voor bij bestaand personeel — controleer of dit niet dezelfde persoon is` });
+      } else if(openstaandeNamen.has(naamKey)){
+        waarschuwingen.push({ rij: i+2, tekst: `"${voornaam} ${achternaam}" heeft al een openstaande uitnodiging staan` });
+      }
 
       const code = genereerUitnodigingsCode();
       const { error } = await supabaseClient.from('interne_uitnodigingen').insert({
@@ -788,7 +829,7 @@
       aangemaakt.push({ voornaam, achternaam, email, code, link: `${APP_URL}/qhse-registreren.html?code=${code}` });
     }
 
-    bulkImportResultaten = { rijen: aangemaakt, mislukt };
+    bulkImportResultaten = { rijen: aangemaakt, mislukt, waarschuwingen };
     statusEl.textContent = '';
     await render();
   }
