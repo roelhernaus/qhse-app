@@ -547,6 +547,9 @@
     let aantal = 0;
     let alert = false;
 
+    const { data: notificaties } = await supabaseClient.rpc('mijn_locatie_notificaties');
+    aantal += (notificaties||[]).filter(n=>!n.gelezen).length;
+
     const { data: meldingen } = await supabaseClient.from('meldingen_view').select('id').eq('actiehouder_id', huidigProfielId).neq('status','Afgehandeld');
     aantal += (meldingen||[]).length;
 

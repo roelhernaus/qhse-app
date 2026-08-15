@@ -23,6 +23,8 @@
   button{ font-family:'Inter',sans-serif; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; padding:9px 14px; font-size:13px; font-weight:600; }
   button.ghost{ background:transparent; }
   button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .chip{ display:inline-block; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; background:#eee; margin:3px 4px 0 0; cursor:pointer; }
+  .chip.actief{ background:var(--accent-dim); color:var(--accent); }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
   .klikbaar{ cursor:pointer; }
   .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
@@ -248,6 +250,9 @@
     const { data: l, error } = await supabaseClient.from('locaties').select('*').eq('id', actieveLocatieId).single();
     if(error) return '<div class="fout">Kon locatie niet laden: ' + error.message + '</div>';
     const { data: vestigingenLijst } = await supabaseClient.from('vestigingen').select('id, naam').order('naam');
+    const { data: alleMedewerkers } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('in_dienst', true).order('achternaam');
+    const { data: gekoppeldeVerantwoordelijken } = await supabaseClient.from('locatie_verantwoordelijken').select('profiel_id').eq('locatie_id', l.id);
+    const verantwoordelijkeIds = new Set((gekoppeldeVerantwoordelijken||[]).map(v=>v.profiel_id));
 
     const checkinUrl = `${APP_URL}/qhse-checkin.html?locatie=${l.qr_code}`;
     const meldenUrl = `${APP_URL}/qhse-melden-extern.html?locatie=${l.qr_code}`;
@@ -296,6 +301,14 @@
           <button class="ghost" onclick="printQr('${checkinUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}', ${checkinLogoUrl ? "'" + checkinLogoUrl.replace(/'/g,"\\'") + "'" : 'null'})">🖨️ Print check-in QR (A4)</button>
         </div>
         <button class="ghost" style="width:100%; margin-top:8px" onclick="printMeldenQr('${meldenUrl.replace(/'/g,"\\'")}', '${l.naam.replace(/'/g,"\\'")}', ${meldenLogoUrl ? "'" + meldenLogoUrl.replace(/'/g,"\\'") + "'" : 'null'})">🖨️ Print meldingen-QR (A4) — voor externen, geen account nodig</button>
+      </div>
+
+      <div class="eyebrow" style="margin-top:20px">Verantwoordelijke persoon/personen</div>
+      <div class="card">
+        <div class="meta" style="margin-bottom:8px">Zij krijgen automatisch een leesnotificatie zodra hier een Incident of Onveilige situatie wordt gemeld — zonder de inhoud van de melding of wie de melder is.</div>
+        <div id="verantwoordelijkeChips">
+          ${(alleMedewerkers||[]).map(p => `<span class="chip ${verantwoordelijkeIds.has(p.id)?'actief':''}" onclick="toggleVerantwoordelijke('${l.id}','${p.id}')">${p.voornaam} ${p.achternaam}</span>`).join('') || '<span class="meta">Geen actieve medewerkers gevonden.</span>'}
+        </div>
       </div>
       <div class="eyebrow" style="margin-top:20px">Nu ingecheckt (${(checkins||[]).length})</div>
       ${rows}
@@ -385,6 +398,18 @@
     const { error } = await supabaseClient.from('locaties').update({ vestiging_id }).eq('id', actieveLocatieId);
     if(error){ alert('Opslaan mislukt: ' + error.message); return; }
     alert('Vestiging opgeslagen.');
+  }
+
+  async function toggleVerantwoordelijke(locatieId, profielId){
+    const { data: bestaat } = await supabaseClient.from('locatie_verantwoordelijken').select('*').eq('locatie_id', locatieId).eq('profiel_id', profielId).maybeSingle();
+    if(bestaat){
+      const { error } = await supabaseClient.from('locatie_verantwoordelijken').delete().eq('locatie_id', locatieId).eq('profiel_id', profielId);
+      if(error){ alert('Mislukt: ' + error.message); return; }
+    } else {
+      const { error } = await supabaseClient.from('locatie_verantwoordelijken').insert({ locatie_id: locatieId, profiel_id: profielId });
+      if(error){ alert('Mislukt: ' + error.message); return; }
+    }
+    await render();
   }
 
   async function verwijderLocatie(){

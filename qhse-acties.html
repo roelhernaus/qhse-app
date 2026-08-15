@@ -206,6 +206,15 @@
   async function verzamelOntvangen(){
     const items = [];
 
+    const { data: notificaties } = await supabaseClient.rpc('mijn_locatie_notificaties');
+    (notificaties||[]).filter(n=>!n.gelezen).forEach(n => items.push({
+      bron: 'Locatiemelding',
+      context: n.locatie_naam || '',
+      omschrijving: `Er is een ${n.type.toLowerCase()} gemeld op deze locatie/project.${n.classificatie ? ' Classificatie: ' + n.classificatie + '.' : ''} Neem voor meer inhoud contact op met KAM.`,
+      afgerond: false,
+      actieType: 'locatienotificatie', actieId: n.notificatie_id
+    }));
+
     const { data: meldingen } = await supabaseClient
       .from('meldingen_view').select('*').eq('actiehouder_id', huidigProfiel.id).neq('status', 'Afgehandeld');
     (meldingen||[]).forEach(m => items.push({ bron:'Melding', context:m.type, omschrijving:m.omschrijving, afgerond:false, actieType:'melding', actieId:m.id }));
@@ -449,13 +458,18 @@
         <span></span>
         <div style="display:flex; gap:8px">
           ${item.verbergTabel ? `<button class="ghost" onclick="verbergItem('${item.verbergTabel}','${item.verbergId}')">Verbergen</button>` : ''}
-          ${!item.afgerond && item.actieType && item.actieType !== 'toolboxControle' ? `<button class="ghost" onclick="voerActieUit('${item.actieType}','${item.actieId}')">Markeer afgerond</button>` : ''}
+          ${!item.afgerond && item.actieType && item.actieType !== 'toolboxControle' ? `<button class="ghost" onclick="voerActieUit('${item.actieType}','${item.actieId}')">${item.actieType==='locatienotificatie' ? 'Gelezen' : 'Markeer afgerond'}</button>` : ''}
         </div>
       </div>
     </div>`;
   }
 
   async function voerActieUit(type, id){
+    if(type === 'locatienotificatie'){
+      await supabaseClient.from('melding_notificaties').update({ gelezen: true, gelezen_op: new Date().toISOString() }).eq('id', id);
+      await render();
+      return;
+    }
     const afhandel_notitie = prompt('Notitie voor de audittrail (optioneel):');
     const notitieVeld = { afhandel_notitie: afhandel_notitie || null };
     if(type === 'melding') await supabaseClient.from('meldingen').update({ status: 'Afgehandeld', ...notitieVeld }).eq('id', id);
