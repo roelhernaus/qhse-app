@@ -238,7 +238,7 @@
           ${m.foto_pad ? `<button class="ghost" style="margin-top:8px" onclick="bekijkNmFoto('${m.foto_pad}')">Foto bekijken</button>` : ''}
           <div class="meta" style="margin-top:6px">${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}</div>
           ${(berichten||[]).map(b => `<div class="bericht">${b.tekst}</div>`).join('')}
-          ${m.status !== 'Afgehandeld' ? `
+          ${m.status !== 'Afgehandeld' && !m.anoniem ? `
             <div class="row" style="margin-top:10px; gap:6px;">
               <input type="text" id="chatVeld${m.id}" placeholder="Typ een bericht…" style="flex:1" onkeydown="if(event.key==='Enter') verstuurNmBericht('${m.id}')">
               <button class="ghost" onclick="verstuurNmBericht('${m.id}')">Versturen</button>
@@ -341,6 +341,11 @@
         <label>Omschrijving</label>
         <textarea rows="4" id="nmOmschrijving" placeholder="Beschrijf zo concreet mogelijk wat je hebt gezien of meegemaakt."></textarea>
 
+        <label style="display:flex; align-items:center; gap:8px; margin-top:14px; font-weight:400;">
+          <input type="checkbox" id="nmAnoniem" style="width:auto"> Anoniem melden
+        </label>
+        <div class="meta" style="margin-top:2px">Je identiteit wordt dan ook voor KAM/admin verborgen. Dit kan achteraf niet meer ongedaan gemaakt worden.</div>
+
         <label style="margin-top:14px">Waar? (optioneel)</label>
         <select id="nmRegio" onchange="nmRegioGewijzigd()"><option value="">Regio — geen keuze</option></select>
         <select id="nmVestiging" style="margin-top:8px"><option value="">Vestiging — geen keuze</option></select>
@@ -373,10 +378,11 @@
       if(fotoFout){ foutEl.textContent = 'Foto uploaden mislukt: ' + fotoFout.message; foutEl.classList.remove('verborgen'); return; }
     }
 
+    const anoniem = document.getElementById('nmAnoniem').checked;
     const vestiging_id = document.getElementById('nmVestiging').value || null;
     const locatie_id = document.getElementById('nmLocatie').value || null;
     const { error } = await supabaseClient.from('meldingen').insert({
-      organisatie_id: huidigProfiel.organisatie_id, type, omschrijving, melder_id: huidigProfiel.id,
+      organisatie_id: huidigProfiel.organisatie_id, type, omschrijving, melder_id: huidigProfiel.id, anoniem,
       vestiging_id, locatie_id, foto_pad: fotoPad
     });
     if(error){ foutEl.textContent = 'Indienen mislukt: ' + error.message; foutEl.classList.remove('verborgen'); return; }

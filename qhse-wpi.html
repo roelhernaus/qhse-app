@@ -291,8 +291,8 @@
     const rows = vragen.map(v => {
       const antwoord = antwoorden[v.id];
       const negatief = antwoord && isNegatief(v, antwoord);
-      const verplichteFoto = v.kritiek && negatief;
-      const toonFotoBlok = verplichteFoto || v.foto_optie;
+      const verplichteFoto = false; // bewust nooit verplicht — voorkomt dat mensen een eerlijk negatief antwoord vermijden om de foto-drempel te ontlopen
+      const toonFotoBlok = (v.kritiek && negatief) || v.foto_optie;
 
       let invoerHtml;
       if(v.type === 'open'){
@@ -318,7 +318,7 @@
           ` : ''}
           ${toonFotoBlok ? `
             <div style="margin-top:10px">
-              <label style="margin:0 0 5px">Foto${verplichteFoto ? ' van de afwijking' : ' (optioneel, als bewijs)'}</label>
+              <label style="margin:0 0 5px">Foto (optioneel, als bewijs)</label>
               ${fotos[v.id] ? `
                 ${previews[v.id] ? `<img src="${previews[v.id]}" style="width:100%; max-width:220px; border-radius:8px; margin-bottom:8px; display:block;">` : ''}
                 <div class="meta" style="margin-bottom:6px">✓ Geüpload</div>
@@ -331,21 +331,19 @@
                 <div class="meta" id="fotoStatus${v.id}" style="margin-top:4px"></div>
               `}
             </div>
-            ${verplichteFoto && !fotos[v.id] ? '<div class="waarschuwing">Verplicht bij een kritieke afwijking.</div>' : ''}
           ` : ''}
         </div>`;
     }).join('');
 
     const onbeantwoord = vragen.some(v => !antwoorden[v.id]);
-    const missendeFoto = vragen.some(v => v.kritiek && isNegatief(v, antwoorden[v.id]) && !fotos[v.id]);
-    const magAfronden = !onbeantwoord && !missendeFoto;
+    const magAfronden = !onbeantwoord;
 
     return `
       <button class="ghost" style="margin-bottom:14px" onclick="annuleerBezoek()">← Annuleren</button>
       <div class="card" style="margin-bottom:16px"><b>${formulier.naam}</b></div>
       ${rows}
       <div class="row" style="margin:18px 0 30px">
-        <span class="meta">${onbeantwoord ? 'Beantwoord eerst alle vragen.' : missendeFoto ? "Voeg de ontbrekende foto's toe." : 'Klaar om af te ronden.'}</span>
+        <span class="meta">${onbeantwoord ? 'Beantwoord eerst alle vragen.' : 'Klaar om af te ronden.'}</span>
         <button class="primary" ${magAfronden?'':'disabled'} onclick="rondBezoekAf()">Bezoek afronden</button>
       </div>
       <div class="fout verborgen" id="invulFout"></div>
