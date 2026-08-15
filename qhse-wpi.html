@@ -138,6 +138,7 @@
     const inhoud = document.getElementById('inhoud');
     if(scherm === 'lijst') inhoud.innerHTML = await renderLijst();
     else if(scherm === 'kiezen') inhoud.innerHTML = await renderKiezen();
+    else if(scherm === 'locatieKiezen') inhoud.innerHTML = renderLocatieKiezen();
     else if(scherm === 'invullen') inhoud.innerHTML = renderInvullen();
   }
 
@@ -186,25 +187,75 @@
     await render();
   }
 
+  let wachtendFormulierId = null;
+
   async function startBezoek(formulierId){
     const { data: bestaand } = await supabaseClient
       .from('wpi_bezoeken').select('*').eq('formulier_id', formulierId).eq('uitvoerder_id', huidigProfiel.id).eq('afgerond', false).maybeSingle();
 
-    let bezoek = bestaand;
-    if(!bezoek){
-      const { data: nieuw, error: bezoekFout } = await supabaseClient
-        .from('wpi_bezoeken').insert({ organisatie_id: huidigProfiel.organisatie_id, formulier_id: formulierId, uitvoerder_id: huidigProfiel.id })
-        .select().single();
-      if(bezoekFout){ alert('Bezoek starten mislukt: ' + bezoekFout.message); return; }
-      bezoek = nieuw;
+    if(bestaand){
+      await openBezoekVoorInvullen(bestaand, formulierId);
+      return;
     }
 
+    // Nieuw bezoek: eerst locatie/project laten kiezen, vóórdat het bezoek zelf aangemaakt wordt.
+    wachtendFormulierId = formulierId;
+    scherm = 'locatieKiezen';
+    await render();
+    await vulLocatieKiezerVoorBezoek();
+  }
+
+  async function vulLocatieKiezerVoorBezoek(){
+    const { data: regios } = await supabaseClient.from('regios').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    const regioSelect = document.getElementById('lkRegio');
+    if(!regioSelect) return;
+    regioSelect.innerHTML = '<option value="">Regio — geen keuze</option>' + (regios||[]).map(r => `<option value="${r.id}">${r.naam}</option>`).join('');
+    await lkRegioGewijzigd();
+  }
+
+  async function lkRegioGewijzigd(){
+    const regioId = document.getElementById('lkRegio').value;
+    let query = supabaseClient.from('vestigingen').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    if(regioId) query = query.eq('regio_id', regioId);
+    const { data: vestigingen } = await query;
+    document.getElementById('lkVestiging').innerHTML = '<option value="">Vestiging — geen keuze</option>' + (vestigingen||[]).map(v => `<option value="${v.id}">${v.naam}</option>`).join('');
+    const { data: locaties } = await supabaseClient.from('locaties').select('*').eq('organisatie_id', huidigProfiel.organisatie_id).order('naam');
+    document.getElementById('lkLocatie').innerHTML = '<option value="">Locatie/project — geen keuze</option>' + (locaties||[]).map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+  }
+
+  function renderLocatieKiezen(){
+    return `
+      <button class="ghost" style="margin-bottom:14px" onclick="scherm='lijst'; wachtendFormulierId=null; render();">← Terug</button>
+      <div class="card">
+        <div class="eyebrow" style="margin-top:0">Waar voer je dit bezoek uit? (optioneel)</div>
+        <div class="meta" style="margin-bottom:10px">Zo kan achteraf gefilterd worden hoeveel WPI/MBB er per locatie, vestiging en regio zijn uitgevoerd.</div>
+        <select id="lkRegio" onchange="lkRegioGewijzigd()"><option value="">Regio — geen keuze</option></select>
+        <select id="lkVestiging" style="margin-top:8px"><option value="">Vestiging — geen keuze</option></select>
+        <select id="lkLocatie" style="margin-top:8px"><option value="">Locatie/project — geen keuze</option></select>
+        <button class="primary" style="margin-top:16px; width:100%" onclick="bevestigLocatieEnStart()">Bezoek starten</button>
+      </div>
+    `;
+  }
+
+  async function bevestigLocatieEnStart(){
+    const locatie_id = document.getElementById('lkLocatie').value || null;
+    const vestiging_id = document.getElementById('lkVestiging').value || null;
+    const { data: nieuw, error: bezoekFout } = await supabaseClient
+      .from('wpi_bezoeken').insert({ organisatie_id: huidigProfiel.organisatie_id, formulier_id: wachtendFormulierId, uitvoerder_id: huidigProfiel.id, locatie_id, vestiging_id })
+      .select().single();
+    if(bezoekFout){ alert('Bezoek starten mislukt: ' + bezoekFout.message); return; }
+    const formulierId = wachtendFormulierId;
+    wachtendFormulierId = null;
+    await openBezoekVoorInvullen(nieuw, formulierId);
+  }
+
+  async function openBezoekVoorInvullen(bezoek, formulierId){
     const { data: formulier } = await supabaseClient.from('wpi_formulieren').select('*').eq('id', formulierId).single();
     const { data: vragen, error: vragenFout } = await supabaseClient
       .from('wpi_vragen').select('*').eq('formulier_id', formulierId).order('volgorde');
     if(vragenFout){ alert('Vragen laden mislukt: ' + vragenFout.message); return; }
 
-    actiefBezoek = { id: bezoek.id, formulier, vragen: vragen||[], antwoorden:{}, fotos:{}, previews:{} };
+    actiefBezoek = { id: bezoek.id, formulier, vragen: vragen||[], antwoorden:{}, fotos:{}, previews:{}, onderbouwingen:{} };
     scherm = 'invullen';
     await render();
   }
@@ -230,7 +281,9 @@
     render();
   }
   function isNegatief(v, antwoord){
-    return v.type === 'slecht/matig/goed' ? antwoord === 'slecht' : antwoord === 'nee';
+    if(v.type === 'slecht/matig/goed') return antwoord === 'slecht';
+    if(v.type === 'open') return !!(antwoord && antwoord.trim());
+    return antwoord === 'nee';
   }
 
   function renderInvullen(){
@@ -257,6 +310,12 @@
             ${v.kritiek ? '<span class="tag kritiek">kritiek</span>' : ''}
           </div>
           ${invoerHtml}
+          ${v.onderbouwing_optie ? `
+            <div style="margin-top:10px">
+              <label style="margin:0 0 5px">Onderbouwing (optioneel)</label>
+              <textarea rows="2" placeholder="Lichting toe waarom je dit antwoord gaf…" oninput="actiefBezoek.onderbouwingen['${v.id}']=this.value">${actiefBezoek.onderbouwingen[v.id]||''}</textarea>
+            </div>
+          ` : ''}
           ${toonFotoBlok ? `
             <div style="margin-top:10px">
               <label style="margin:0 0 5px">Foto${verplichteFoto ? ' van de afwijking' : ' (optioneel, als bewijs)'}</label>
@@ -303,9 +362,10 @@
   }
 
   async function rondBezoekAf(){
-    const { vragen, antwoorden, fotos, id } = actiefBezoek;
+    const { vragen, antwoorden, fotos, onderbouwingen, id } = actiefBezoek;
     const rijen = vragen.map(v => ({
-      bezoek_id: id, vraag_id: v.id, antwoord: antwoorden[v.id], foto_pad: fotos[v.id] || null
+      bezoek_id: id, vraag_id: v.id, antwoord: antwoorden[v.id], foto_pad: fotos[v.id] || null,
+      onderbouwing: (onderbouwingen[v.id] || '').trim() || null
     }));
     const { error: antwoordFout } = await supabaseClient.from('wpi_antwoorden').insert(rijen);
     if(antwoordFout){
