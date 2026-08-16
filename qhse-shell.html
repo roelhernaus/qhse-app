@@ -553,6 +553,16 @@
     aantal += ongelezenNotificaties.length;
     if(ongelezenNotificaties.some(n=>n.type==='Incident')) alert = true;
 
+    if(['admin','kam'].includes(huidigProfielRol)){
+      const { data: incidenten } = await supabaseClient.from('meldingen').select('status, aangemaakt_op').eq('type', 'Incident').neq('status', 'Afgehandeld');
+      const nu = Date.now();
+      const verouderd = (incidenten||[]).filter(m => {
+        const dagenOud = (nu - new Date(m.aangemaakt_op).getTime()) / (1000*60*60*24);
+        return (m.status === 'Nieuw' && dagenOud > 1) || (m.status === 'In behandeling' && dagenOud > 30);
+      });
+      if(verouderd.length){ alert = true; aantal += verouderd.length; }
+    }
+
     const { data: meldingen } = await supabaseClient.from('meldingen_view').select('id').eq('actiehouder_id', huidigProfielId).neq('status','Afgehandeld');
     aantal += (meldingen||[]).length;
 

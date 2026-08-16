@@ -39,6 +39,7 @@
   .fout{ background:var(--red-dim); color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
   .melding{ background:var(--green-dim); color:var(--green); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
   .waarschuwing{ background:#fbf0e2; color:#8a5416; font-size:13px; padding:10px 12px; border-radius:8px; }
+  .info-signaal{ background:#e8f0f7; color:#2c5878; font-size:12.5px; padding:9px 12px; border-radius:8px; }
   #login-scherm{ max-width:400px; margin:80px auto; }
   .verborgen{ display:none; }
   label{ display:block; font-size:12.5px; font-weight:600; margin:12px 0 5px; }
@@ -184,6 +185,13 @@
     const { data: incidenten, error } = await query;
     if(error) return '<div class="fout">Kon incidenten niet laden: ' + error.message + '</div>';
 
+    function isVerouderd(m){
+      const dagenOud = (Date.now() - new Date(m.aangemaakt_op).getTime()) / (1000*60*60*24);
+      if(m.status === 'Nieuw' && dagenOud > 1) return true;
+      if(m.status === 'In behandeling' && dagenOud > 30) return true;
+      return false;
+    }
+
     const rows = (incidenten||[]).map(m => `
       <div class="card klikbaar" onclick="openDetail('${m.id}')">
         <div class="row">
@@ -191,7 +199,7 @@
           <span class="status ${m.status.replace(' ','-')}">${m.status}</span>
         </div>
         <div class="meta" style="margin-top:4px">${(m.omschrijving||'').slice(0,120)}${(m.omschrijving||'').length>120?'…':''}</div>
-        <div class="meta" style="margin-top:4px">${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}${m.nla_gemeld === false && m.classificatie_definitief && NLA_LIJST.includes(m.classificatie_definitief) ? ' · ⚠ NLA nog niet gemeld' : ''}</div>
+        <div class="meta" style="margin-top:4px">${new Date(m.aangemaakt_op).toLocaleDateString('nl-NL')}${m.nla_gemeld === false && m.classificatie_definitief && NLA_LIJST.includes(m.classificatie_definitief) ? ' · ⚠ NLA nog niet gemeld' : ''}${isVerouderd(m) ? ` · ⚠ Staat al langer dan ${m.status==='Nieuw'?'24 uur op Nieuw':'een maand in behandeling'}` : ''}</div>
       </div>`).join('') || '<div class="meta">Geen incidenten gevonden (met deze filters).</div>';
 
     return `
@@ -248,6 +256,17 @@
     const magWijzigenClassificatie = huidigProfiel.rol === 'admin' || !m.classificatie_definitief || (huidigProfiel.rol === 'kam' && huidigProfiel.is_leidinggevende);
     const nlaVerplicht = m.classificatie_definitief && NLA_LIJST.includes(m.classificatie_definitief);
 
+    let herhalingSignaal = '';
+    if(m.classificatie_definitief && m.locatie_id){
+      const dertigDagenGeleden = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+      const { count: herhalingAantal } = await supabaseClient.from('meldingen').select('*', { count:'exact', head:true })
+        .eq('type', 'Incident').eq('classificatie_definitief', m.classificatie_definitief).eq('locatie_id', m.locatie_id)
+        .gte('aangemaakt_op', dertigDagenGeleden);
+      if(herhalingAantal && herhalingAantal > 1){
+        herhalingSignaal = `ℹ️ Ter info (geen harde conclusie, alleen een signaal): dit is de ${herhalingAantal}e melding met classificatie "${m.classificatie_definitief}" op deze locatie in de afgelopen 30 dagen.`;
+      }
+    }
+
     const { data: historie } = await supabaseClient.from('melding_classificatie_historie').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('gewijzigd_op', { ascending:false });
     const { data: opvolgingEntries } = await supabaseClient.from('melding_opvolging_entries').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('aangemaakt_op', { ascending:false });
     const { data: documenten } = await supabaseClient.from('melding_incidentonderzoek_documenten').select('*, profielen(voornaam, achternaam)').eq('melding_id', m.id).order('geupload_op', { ascending:false });
@@ -288,6 +307,8 @@
           <option value="">—</option>
           ${['< €500','€500 - €2.500','€2.500 - €10.000','> €10.000'].map(b => `<option ${m.materiele_schade_bandbreedte===b?'selected':''}>${b}</option>`).join('')}
         </select>
+
+        ${herhalingSignaal ? `<div class="info-signaal" style="margin-top:10px">${herhalingSignaal}</div>` : ''}
 
         ${nlaVerplicht ? `
           <div class="waarschuwing" style="margin-top:10px">⚠ Dit type moet gemeld worden bij de Nederlandse Arbeidsinspectie (NLA) — onverwijld, zonder uitstel.</div>
