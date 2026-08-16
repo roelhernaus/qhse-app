@@ -385,9 +385,9 @@
     return { percentage: Math.round((teller/middelen.length)*100), teller, noemer: middelen.length, detail };
   }
 
-  async function berekenIncidentenPerStatus(){
+  async function berekenIncidentenPerStatus(vestigingIdsVoorRegio){
     let query = supabaseClient.from('meldingen').select('status').eq('type', 'Incident');
-    query = pasMeldingFilterToe(query);
+    query = pasMeldingFilterToe(query, vestigingIdsVoorRegio);
     const { data: incidenten } = await query;
     const lijst = incidenten || [];
     return {
@@ -399,27 +399,27 @@
   }
 
   let gekozenLocaties = new Set();
-  let vestigingIdsVoorRegioFilter = null; // cache binnen één render-cyclus
 
-  function pasMeldingFilterToe(query){
+  async function berekenVestigingIdsVoorRegioFilter(){
+    if(gekozenRegios.size && !gekozenVestigingen.size && !gekozenLocaties.size){
+      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenRegios]);
+      const ids = (vestInRegio||[]).map(v=>v.id);
+      return ids.length ? ids : ['00000000-0000-0000-0000-000000000000'];
+    }
+    return null;
+  }
+
+  function pasMeldingFilterToe(query, vestigingIdsVoorRegio){
     if(gekozenLocaties.size) return query.in('locatie_id', [...gekozenLocaties]);
     if(gekozenVestigingen.size) return query.in('vestiging_id', [...gekozenVestigingen]);
-    if(vestigingIdsVoorRegioFilter) return query.in('vestiging_id', vestigingIdsVoorRegioFilter);
+    if(vestigingIdsVoorRegio) return query.in('vestiging_id', vestigingIdsVoorRegio);
     return query;
   }
 
-  async function berekenMeldingTypenOverzicht(){
-    // Bij een gekozen regio (zonder specifieke vestiging/locatie) eerst de bijbehorende vestiging-ID's ophalen
-    vestigingIdsVoorRegioFilter = null;
-    if(gekozenRegios.size && !gekozenVestigingen.size && !gekozenLocaties.size){
-      const { data: vestInRegio } = await supabaseClient.from('vestigingen').select('id').in('regio_id', [...gekozenRegios]);
-      vestigingIdsVoorRegioFilter = (vestInRegio||[]).map(v=>v.id);
-      if(!vestigingIdsVoorRegioFilter.length) vestigingIdsVoorRegioFilter = ['00000000-0000-0000-0000-000000000000'];
-    }
-
-    let incidentQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('classificatie_definitief, classificatie_melder').eq('type', 'Incident'));
-    let onveiligQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Onveilige situatie'));
-    let verbeterQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Verbetervoorstel'));
+  async function berekenMeldingTypenOverzicht(vestigingIdsVoorRegio){
+    let incidentQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('classificatie_definitief, classificatie_melder').eq('type', 'Incident'), vestigingIdsVoorRegio);
+    let onveiligQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Onveilige situatie'), vestigingIdsVoorRegio);
+    let verbeterQuery = pasMeldingFilterToe(supabaseClient.from('meldingen').select('*', { count:'exact', head:true }).eq('type', 'Verbetervoorstel'), vestigingIdsVoorRegio);
 
     const { data: incidenten } = await incidentQuery;
     const classificatieTelling = {};
@@ -534,8 +534,10 @@
 
   async function render(){
     const inhoud = document.getElementById('inhoud');
+    const vestigingIdsVoorRegio = await berekenVestigingIdsVoorRegioFilter();
     const [wpi, mbb, toolboxen, opleidingen, keuringen, acties, incidentenStatus, meldingTypen] = await Promise.all([
-      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies(), berekenIncidentenPerStatus(), berekenMeldingTypenOverzicht()
+      berekenWpiMbb('wpi'), berekenWpiMbb('mbb'), berekenToolboxen(), berekenOpleidingen(), berekenKeuringen(), berekenActies(),
+      berekenIncidentenPerStatus(vestigingIdsVoorRegio), berekenMeldingTypenOverzicht(vestigingIdsVoorRegio)
     ]);
     laatsteData = { wpi, mbb, toolboxen, opleidingen, keuringen };
 
