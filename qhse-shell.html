@@ -617,6 +617,41 @@
     openstaandeActiesAantal = aantal;
     heeftOpenstaandeAlert = alert;
     pasActiesBadgeToe();
+    pasIncidentenBadgeToe();
+  }
+
+  async function pasIncidentenBadgeToe(){
+    if(!['admin','kam'].includes(huidigProfielRol)) return;
+    const { data: incidenten } = await supabaseClient.from('meldingen').select('status').eq('type', 'Incident');
+    const lijst = incidenten || [];
+    const aantalNieuw = lijst.filter(m => m.status === 'Nieuw').length;
+    const aantalTotaal = lijst.filter(m => m.status === 'Nieuw' || m.status === 'In behandeling').length;
+
+    const railItem = document.querySelector('.rail-item[data-pagina="qhse-beheer-incidenten.html"]');
+    if(railItem){
+      railItem.querySelectorAll('.badge-incidenten').forEach(b => b.remove());
+      if(aantalTotaal > 0){
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge badge-incidenten" style="margin-left:auto; background:#2f6fe5;">${aantalTotaal}</span>`);
+      }
+      if(aantalNieuw > 0){
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge badge-incidenten" style="${aantalTotaal>0?'':'margin-left:auto;'} background:#e5484d;">${aantalNieuw}</span>`);
+        railItem.insertAdjacentHTML('beforeend', `<span class="badge badge-incidenten alert" style="background:#e5484d;">!</span>`);
+      }
+    }
+    const tegel = document.querySelector('.tegel[onclick*="qhse-beheer-incidenten.html"]');
+    if(tegel){
+      tegel.querySelectorAll('.tegel-badge-incidenten').forEach(b => b.remove());
+      let rechts = 12;
+      if(aantalNieuw > 0){
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge tegel-badge-incidenten" style="right:${rechts}px; background:#e5484d;">!</span>`);
+        rechts += 26;
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge tegel-badge-incidenten" style="right:${rechts}px; background:#e5484d;">${aantalNieuw}</span>`);
+        rechts += 30;
+      }
+      if(aantalTotaal > 0){
+        tegel.insertAdjacentHTML('beforeend', `<span class="tegel-badge tegel-badge-incidenten" style="right:${rechts}px; background:#2f6fe5;">${aantalTotaal}</span>`);
+      }
+    }
   }
 
   function pasActiesBadgeToe(){
@@ -654,6 +689,7 @@
     bouwTegels(omgeving==='frontend' ? MODULES_FRONTEND.filter(isModuleZichtbaar) : toegestaneBackend, omgeving==='backend');
     toonDashboard();
     pasActiesBadgeToe();
+    pasIncidentenBadgeToe();
   }
 
   function ga(el){
