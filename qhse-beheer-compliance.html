@@ -435,13 +435,40 @@
     return { classificaties, onveiligeSituaties: onveiligeSituaties||0, verbetervoorstellen: verbetervoorstellen||0 };
   }
 
-  async function vulLocatieChips(){
-    const { data: locaties } = await supabaseClient.from('locaties').select('*').order('naam');
-    const lEl = document.getElementById('cLocatieChips');
-    if(lEl) lEl.innerHTML = (locaties||[]).map(l => `<span class="chip ${gekozenLocaties.has(l.id)?'actief':''}" onclick="toggleCLocatie('${l.id}')">${l.naam}</span>`).join('') || '<span class="meta">Geen locaties/projecten.</span>';
+  async function toonGekozenLocaties(){
+    const lEl = document.getElementById('cLocatieLijst');
+    if(!lEl) return;
+    if(!gekozenLocaties.size){ lEl.innerHTML = ''; return; }
+    const { data: locaties } = await supabaseClient.from('locaties').select('id, naam').in('id', [...gekozenLocaties]);
+    lEl.innerHTML = (locaties||[]).map(l => `
+      <span class="chip actief" onclick="toggleCLocatie('${l.id}')">${l.naam} ✕</span>
+    `).join('');
+  }
+  let cLocatieZoekTimer = null;
+  function zoekCLocatie(tekst){
+    clearTimeout(cLocatieZoekTimer);
+    const resultatenEl = document.getElementById('cLocatieResultaten');
+    if(!tekst || tekst.trim().length < 2){ resultatenEl.innerHTML = ''; return; }
+    cLocatieZoekTimer = setTimeout(async () => {
+      const { data: gevonden } = await supabaseClient.from('locaties').select('id, naam')
+        .ilike('naam', `%${tekst}%`).order('naam').limit(8);
+      const nieuw = (gevonden||[]).filter(l => !gekozenLocaties.has(l.id));
+      resultatenEl.innerHTML = `
+        <div style="position:absolute; top:2px; left:0; right:0; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.08); z-index:10; max-height:220px; overflow-y:auto;">
+          ${nieuw.map(l => `<div class="klikbaar" style="padding:9px 12px; font-size:13px;" onclick="voegCLocatieToe('${l.id}')">${l.naam}</div>`).join('') || '<div class="meta" style="padding:9px 12px;">Niemand gevonden.</div>'}
+        </div>`;
+    }, 250);
+  }
+  async function voegCLocatieToe(id){
+    gekozenLocaties.add(id);
+    document.getElementById('cLocatieZoek').value = '';
+    document.getElementById('cLocatieResultaten').innerHTML = '';
+    await toonGekozenLocaties();
+    await render();
   }
   async function toggleCLocatie(id){
     if(gekozenLocaties.has(id)) gekozenLocaties.delete(id); else gekozenLocaties.add(id);
+    await toonGekozenLocaties();
     await render();
   }
   function naarIncidentenMetFilter(classificatie){
@@ -472,7 +499,7 @@
     const rEl = document.getElementById('cRegioChips');
     if(rEl) rEl.innerHTML = (regios||[]).map(r => `<span class="chip ${gekozenRegios.has(r.id)?'actief':''}" onclick="toggleCRegio('${r.id}')">${r.naam}</span>`).join('') || '<span class="meta">Nog geen regio\'s.</span>';
     await vulComplianceVestigingChips();
-    await vulLocatieChips();
+    await toonGekozenLocaties();
     const { data: leidinggevenden } = await supabaseClient.from('profielen').select('id, voornaam, achternaam').eq('is_leidinggevende', true).eq('in_dienst', true).order('achternaam');
     const lSelect = document.getElementById('cLeidinggevende');
     if(lSelect) lSelect.innerHTML = '<option value="">Alle leidinggevenden</option>' + (leidinggevenden||[]).map(p => `<option value="${p.id}" ${filterLeidinggevendeId===p.id?'selected':''}>${p.voornaam} ${p.achternaam}</option>`).join('');
@@ -528,7 +555,9 @@
         <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Vestigingen (meerdere mogelijk, niets aangevinkt = alle)</label>
         <div id="cVestigingChips"></div>
         <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Locatie/project <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(alleen van invloed op Incidenten en Verdeling per type melding)</span></label>
-        <div id="cLocatieChips"></div>
+        <div id="cLocatieLijst"></div>
+        <input type="text" id="cLocatieZoek" placeholder="Typ om een locatie/project te zoeken en toe te voegen…" oninput="zoekCLocatie(this.value)" autocomplete="off">
+        <div id="cLocatieResultaten" style="position:relative;"></div>
         <label style="font-size:11.5px; font-weight:600; display:block; margin:10px 0 4px">Leidinggevende <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(alleen van invloed op WPI/MBB/Toolboxen/Opleidingen)</span></label>
         <select id="cLeidinggevende" onchange="filterGewijzigd()"><option value="">Alle leidinggevenden</option></select>
         <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-weight:400;">
