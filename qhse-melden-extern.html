@@ -7,6 +7,7 @@
 <title>QHSE — Melding maken</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 <style>
   :root{
     --bg:#f4f5f3; --card:#ffffff; --border:#e2e3df; --text:#1c1d1b; --text-soft:#5a5c57;
@@ -135,7 +136,49 @@
 
   let gecomprimeerdeFotoBlob = null;
 
-  function verwerkFoto(inputEl){
+  // Bepaalt of een foto "net genomen" is (EXIF-opnametijd, of anders bestandsdatum, binnen 5 minuten van nu).
+  // Alleen dán vragen we locatietoestemming en branden we tijd+locatie zichtbaar in de foto — bij een foto
+  // uit de galerij (ouder bestand) doen we dat bewust niet, want die tijd/locatie zou misleidend kunnen zijn.
+  async function bepaalOpnameMoment(file){
+    let opnameTijd = null;
+    try{
+      if(window.exifr){
+        const exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
+        if(exif) opnameTijd = exif.DateTimeOriginal || exif.CreateDate || null;
+      }
+    }catch(e){ /* geen EXIF, geen probleem */ }
+    if(!opnameTijd) opnameTijd = new Date(file.lastModified);
+    const minutenGeleden = (Date.now() - opnameTijd.getTime()) / 60000;
+    return { opnameTijd, isNetGenomen: minutenGeleden > -5 && minutenGeleden < 5 };
+  }
+
+  async function vraagLocatieOp(){
+    if(!navigator.geolocation) return null;
+    try{
+      const positie = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+      });
+      return `${positie.coords.latitude.toFixed(5)}, ${positie.coords.longitude.toFixed(5)}`;
+    }catch(e){ return null; }
+  }
+
+  function tekenOverlay(ctx, width, height, regels){
+    const fontGrootte = Math.max(14, Math.round(width / 40));
+    ctx.font = `${fontGrootte}px sans-serif`;
+    ctx.textBaseline = 'bottom';
+    const regelHoogte = fontGrootte * 1.3;
+    const padding = fontGrootte * 0.5;
+    const breedste = Math.max(...regels.map(t => ctx.measureText(t).width));
+    const blokHoogte = regels.length * regelHoogte + padding;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(width - breedste - padding*2, height - blokHoogte, breedste + padding*2, blokHoogte);
+    ctx.fillStyle = '#fff';
+    regels.forEach((regel, i) => {
+      ctx.fillText(regel, width - breedste - padding, height - padding - (regels.length-1-i)*regelHoogte);
+    });
+  }
+
+  async function verwerkFoto(inputEl){
     const statusEl = document.getElementById('mFotoStatus');
     const previewEl = document.getElementById('mFotoPreview');
     const knop = document.getElementById('mVerstuurKnop');
@@ -147,6 +190,12 @@
     knop.disabled = true;
     knop.textContent = 'Even geduld — foto wordt verwerkt…';
     statusEl.textContent = 'Foto verwerken…';
+
+    const { opnameTijd, isNetGenomen } = await bepaalOpnameMoment(file);
+    if(isNetGenomen) statusEl.textContent = 'Locatie ophalen (optioneel)…';
+    const locatieTekst = isNetGenomen ? await vraagLocatieOp() : null;
+    statusEl.textContent = 'Foto comprimeren…';
+
     const img = new Image();
     const reader = new FileReader();
     reader.onload = (e) => { img.src = e.target.result; };
@@ -160,7 +209,13 @@
       }
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      if(isNetGenomen){
+        const regels = [opnameTijd.toLocaleString('nl-NL')];
+        if(locatieTekst) regels.push(locatieTekst);
+        tekenOverlay(ctx, width, height, regels);
+      }
       canvas.toBlob((blob) => {
         knop.disabled = false;
         knop.textContent = 'Melding versturen';
